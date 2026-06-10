@@ -1,12 +1,19 @@
+<<<<<<< HEAD
 ﻿# ChatInsight.Api
+=======
+﻿# ChatInsight.Api — статус проекта "в работе"
+>>>>>>> 8410af17d17c5622358b595da77b0b68bd80e490
 
 Backend для интеллектуального анализа переписок. Принимает экспорт Telegram
 (`result.json`) и считает статистику, темы, эмоции, скорость ответа, инициативу,
 таймлайн и отношения — отдаёт результат как JSON через REST API.
 
+<<<<<<< HEAD
 **Стек:** ASP.NET Core Web API на **.NET 10**, контроллеры, Swagger.
 Пока всё считается в памяти за один запрос — без базы и без AI (это в плане).
 
+=======
+>>>>>>> 8410af17d17c5622358b595da77b0b68bd80e490
 ---
 
 ## Быстрый старт
@@ -41,6 +48,7 @@ Swagger: `https://localhost:7015/swagger` (или `http://localhost:5201`).
 
 Все принимают `IFormFile file` (`result.json`), `multipart/form-data`.
 
+<<<<<<< HEAD
 ---
 
 ## Документация
@@ -56,3 +64,12 @@ Swagger: `https://localhost:7015/swagger` (или `http://localhost:5201`).
 MVP-аналитика готова и собирается. Следующий рубеж — база данных (PostgreSQL +
 EF Core), сохранение импорта, экспорт отчёта в PDF, затем AI на Ollama.
 Подробнее — в `ROADMAP.md`.
+=======
+[ ] База данных (PostgreSQL + EF Core + pgvector)
+[ ] Сохранение импорта (работа по chatId)
+[ ] Экспорт отчёта в PDF / HTML / Markdown
+[ ] AI Engine (Ollama)
+[ ] Frontend (React + TS + Tailwind)
+[ ] Life Timeline Engine
+```
+>>>>>>> 8410af17d17c5622358b595da77b0b68bd80e490
