@@ -2,6 +2,8 @@ namespace ChatInsight.Api.DTOs;
 
 public class ImportResultDto
 {
+    public Guid ChatId { get; set; }
+
     public string ChatName { get; set; } = "";
 
     public string ChatType { get; set; } = "";

@@ -1,5 +1,6 @@
 using ChatInsight.Api.DTOs;
 using ChatInsight.Api.Parsers;
+using ChatInsight.Api.Services.Import;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ChatInsight.Api.Controllers;
@@ -8,9 +9,14 @@ namespace ChatInsight.Api.Controllers;
 [Route("api/import")]
 public class ImportController : AnalysisControllerBase
 {
-    public ImportController(TelegramParser telegramParser)
+    private readonly ChatImportService _import;
+
+    public ImportController(
+        TelegramParser telegramParser,
+        ChatImportService import)
         : base(telegramParser)
     {
+        _import = import;
     }
 
     [HttpPost("telegram")]
@@ -18,6 +24,8 @@ public class ImportController : AnalysisControllerBase
     {
         var (export, error) = await ReadExportAsync(file);
         if (error is not null) return error;
+
+        var chat = await _import.ImportAsync(export!);
 
         var validated = export!;
 
@@ -34,6 +42,7 @@ public class ImportController : AnalysisControllerBase
 
         var result = new ImportResultDto
         {
+            ChatId = chat.Id,
             ChatName = validated.Name,
             ChatType = validated.Type,
             MessagesCount = validated.Messages.Count,

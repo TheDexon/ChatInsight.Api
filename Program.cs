@@ -1,13 +1,21 @@
 using ChatInsight.Api.Configuration;
+using ChatInsight.Api.Data;
 using ChatInsight.Api.Parsers;
 using ChatInsight.Api.Services.Analytics;
+using ChatInsight.Api.Services.Import;
 using ChatInsight.Api.Services.Text;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // --- Конфигурация ---
 builder.Services.Configure<EmotionAnalysisOptions>(
     builder.Configuration.GetSection(EmotionAnalysisOptions.SectionName));
+
+// --- База данных (PostgreSQL) ---
+builder.Services.AddDbContext<ChatInsightDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("Postgres")));
 
 // --- MVC / Swagger ---
 builder.Services.AddControllers();
@@ -32,6 +40,10 @@ builder.Services.AddScoped<TelegramParser>();
 // --- Текстовые сервисы ---
 builder.Services.AddScoped<TelegramTextExtractor>();
 builder.Services.AddScoped<TextCleaner>();
+
+// --- Импорт / загрузка из БД ---
+builder.Services.AddScoped<ChatImportService>();
+builder.Services.AddScoped<ChatContextLoader>();
 
 // --- Аналитика ---
 builder.Services.AddScoped<StatisticsService>();

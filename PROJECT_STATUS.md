@@ -1,7 +1,7 @@
 # ChatInsight.Api — статус проекта
 
 Backend для интеллектуального анализа переписок (пока — Telegram Export).
-ASP.NET Core Web API на **.NET 10**, контроллеры + Swagger.
+ASP.NET Core Web API на **.NET 9**, контроллеры + Swagger + **PostgreSQL (EF Core)**.
 
 Срез текущего состояния: **что сделано**, **на чём остановились**, **что дальше**.
 Полное видение продукта — в `1.docx`. Подробности по слоям — в `ARCHITECTURE.md`,
@@ -11,82 +11,113 @@ ASP.NET Core Web API на **.NET 10**, контроллеры + Swagger.
 
 ## Что это сейчас
 
-Рабочий API: принимает выгрузку Telegram (`result.json`) и прогоняет её через
-набор аналитических сервисов (статистика, текст, темы, эмоции, скорость ответа,
-инициатива, таймлайн, отношения) + сводный отчёт. Всё считается **в памяти за один
-запрос** — без базы, без сохранения, без AI/LLM. Анализ построен на статистике и
-словарях, не на ML.
+API принимает выгрузку Telegram (`result.json`), **сохраняет чат в PostgreSQL**
+и возвращает `chatId`. Дальше анализ (статистика, текст, темы, эмоции, скорость
+ответа, инициатива, таймлайн, отношения + сводный отчёт) собирается **из базы по
+chatId** — без повторной загрузки файла. Анализ построен на статистике и словарях,
+не на ML (AI — в плане).
 
 ---
 
 ## Что работает ✅
 
-- [x] ASP.NET Core Web API (.NET 10), Swagger, HTTPS
+- [x] ASP.NET Core Web API (.NET 9), Swagger, HTTPS
 - [x] Импорт и парсинг Telegram Export (`result.json`)
+- [x] **PostgreSQL + EF Core**: сущности `Chat` / `Message`, миграции, сохранение импорта
+- [x] **Импорт пишет в БД и возвращает `chatId`**
+- [x] **Чтение из БД**: список чатов, метаданные, полный отчёт по `chatId`
 - [x] `TelegramTextExtractor` — текст из `text`, когда это массив entity
 - [x] `ChatAnalysisContext` — единый слой фильтрации/сортировки (все сервисы на нём)
 - [x] Статистика активности (авторы / часы / дни / активный час / длина)
 - [x] Текстовая аналитика и темы (частотность слов)
-- [x] Эмоции (позитив / негатив / мат + toxicity), словари вынесены в конфиг
-- [x] Скорость ответа (с отсечкой пауз > 24ч)
-- [x] Инициатива (кто начинает день / после паузы ≥8ч)
-- [x] Таймлайн (начало, пик, длинная пауза, всплески)
-- [x] Анализ отношений (баланс активности, доминирующий участник)
-- [x] Сводный отчёт `/api/report`
+- [x] Эмоции (позитив / негатив / мат + toxicity), словари в конфиге
+- [x] Скорость ответа, инициатива, таймлайн, отношения
+- [x] Сводный отчёт (`/api/report` по файлу и `/api/chats/{id}/report` из БД)
 - [x] Единая валидация загрузки (`AnalysisControllerBase`)
-- [x] CORS-политика под фронт
-- [x] Guard от пустого чата
+- [x] CORS-политика под фронт, guard от пустого чата
+- [x] Docker Compose для Postgres
 
 ---
 
-## Тех-долг — закрыто 🟢
+## Эндпоинты
 
-Разобрано в этой итерации (до первого пуша):
+| Маршрут | Метод | Источник | Что делает |
+|---|---|---|---|
+| `/api/import/telegram` | POST | файл → БД | сохраняет чат, возвращает `chatId` + метаданные |
+| `/api/chats` | GET | БД | список сохранённых чатов |
+| `/api/chats/{id}` | GET | БД | метаданные одного чата |
+| `/api/chats/{id}/report` | GET | БД | полный отчёт по сохранённому чату |
+| `/api/analysis/basic` | POST | файл | статистика (разовый прогон по файлу) |
+| `/api/text`, `/api/topics`, `/api/emotion` | POST | файл | соответствующий модуль по файлу |
+| `/api/response`, `/api/initiative` | POST | файл | по файлу |
+| `/api/timeline`, `/api/relationship` | POST | файл | по файлу |
+| `/api/report` | POST | файл | сводный отчёт по файлу |
 
-- [x] Дубль регистрации `StatisticsService` в `Program.cs` — убран, DI разложен по группам
-- [x] Версия фреймворка выровнена на **net10.0** (LTS, как в идее)
-- [x] Проверка файла вынесена в `AnalysisControllerBase.ReadExportAsync` — все контроллеры используют её (+ ловится битый JSON и пустой экспорт)
-- [x] CORS настроен (`localhost:5173` Vite, `localhost:3000` CRA/Next)
-- [x] Единый источник данных: `Response/Initiative/Timeline/Relationship` переведены на `ChatAnalysisContext` (раньше работали через `TelegramExport`)
-- [x] `ChatAnalysisContext.Create` больше не падает на пустом чате (`First()` → guard), добавлен `IsEmpty`
-- [x] Словари эмоций/мата вынесены в `appsettings.json` → `EmotionAnalysisOptions`, чуть расширены
+> File-эндпоинты оставлены для разовых прогонов. Постепенно их можно перевести
+> на `chatId` (см. ROADMAP) или убрать.
 
-Решение по «коллизии имён» (осознанно НЕ переименовывали):
-`ChatAnalysisContext` оставлен как есть — это рантайм-контекст анализа, и он
-не конфликтует с будущим `ChatInsightDbContext` (разные имена). Договорённость
-зафиксирована в `ARCHITECTURE.md` (раздел «Соглашения по папкам»), чтобы при
-добавлении БД не путаться. Большой рискованный рефактор перед пушем смысла не имеет.
+---
+
+## Хранение данных
+
+PostgreSQL, две таблицы (EF Core):
+
+- **Chats** — `Id` (Guid), `Name`, `Type`, `ImportedAt`, `MessageCount`.
+- **Messages** — `Id`, `ChatId` (FK, cascade), `TelegramId`, `Type`, `Date`
+  (`timestamp without time zone`), `Author`, `Text` (плоский, для анализа),
+  `RawTextJson` (оригинальный `text` как JSON — на будущее: ссылки, форматирование, AI).
+
+Строка подключения — `ConnectionStrings:Postgres` в `appsettings.json` (локальный
+dev-Postgres из `docker-compose.yml`). В проде переопределяется переменной
+окружения `ConnectionStrings__Postgres`.
 
 ---
 
 ## Чего ещё нет ⛔
 
-- [ ] **База данных** (PostgreSQL + EF Core + pgvector). Папки `Data/`, `Models/Domain/` — пустой задел. Каждый запрос заново парсит файл.
-- [ ] **AI / LLM** (Ollama: Qwen/Gemma/Llama). Эмоции/темы — словари и частотность, не модель.
-- [ ] **Экспорт отчёта в файл** (PDF/HTML/Markdown). `/api/report` отдаёт JSON. Папка `Reports/` пустая.
+- [ ] **AI / LLM** (Ollama: Qwen/Gemma/Llama). Эмоции/темы — словари, не модель.
+- [ ] **Экспорт отчёта в файл** (PDF/HTML/Markdown). Пока только JSON. Папка `Reports/` пустая.
 - [ ] **Frontend** (React + TS + Tailwind).
-- [ ] **Relationship**: заполняет только `ActivityBalance` и `DominantParticipant`; `InitiativeBalance`/`ResponseBalance` пока пустые.
+- [ ] **Relationship**: `InitiativeBalance`/`ResponseBalance` пока не считаются.
+- [ ] **pgvector** (семантика) — пакет Postgres есть, расширение не подключено.
 - [ ] **Группы**: Relationship берёт топ-2 авторов, для групповых чатов логика не продумана.
+- [ ] file-эндпоинты пока дублируют функциональность БД-эндпоинтов.
 
 ---
 
 ## Запуск
 
 ```bash
+docker compose up -d          # поднять Postgres
+dotnet ef database update     # применить миграции (первый раз)
 dotnet run
 ```
 
-Swagger: `https://localhost:7015/swagger` (или `http://localhost:5201`).
-Грузим `result.json` (Telegram → Экспорт истории чата → JSON) в любой POST-эндпоинт.
+Swagger: `http://localhost:5201/swagger`.
+Флоу: `POST /api/import/telegram` → берёшь `chatId` → `GET /api/chats/{id}/report`.
 
-> Нужен **.NET 10 SDK**. Проверь `dotnet --list-sdks`; если стоит только 9.x —
-> поменяй `<TargetFramework>` в `ChatInsight.Api.csproj` на `net9.0`.
+> Стек EF: `Npgsql.EntityFrameworkCore.PostgreSQL` 9.0.x + `Microsoft.EntityFrameworkCore.Design` 9.0.x
+> (мажор должен совпадать с таргетом `net9.0`).
 
 ---
 
 ## Коротко
 
-Крепкий аналитический backend: импорт Telegram + 9 модулей, все на едином
-`ChatAnalysisContext`, плюс сводный отчёт. Тех-долг закрыт, версия чистая для
-коммита. **Следующий рубеж — база данных и сохранение**, затем экспорт отчёта в
-PDF и подключение AI (см. `ROADMAP.md`).
+Backend хранит импортированные чаты в PostgreSQL и собирает аналитику из базы по
+`chatId` — полный цикл «импорт → хранение → анализ» работает end-to-end.
+Следующие рубежи (см. `ROADMAP.md`): экспорт отчёта в PDF и AI на Ollama.
+
+```text
+[✓] Web API + Swagger
+[✓] Импорт + парсинг Telegram
+[✓] PostgreSQL + EF Core (Chat/Message, миграции)
+[✓] Импорт → БД → chatId
+[✓] Анализ из БД по chatId (/api/chats/{id}/report)
+[✓] 9 аналитических модулей на ChatAnalysisContext
+
+[ ] Экспорт отчёта в PDF / HTML / Markdown
+[ ] AI Engine (Ollama)
+[ ] Перевод всех эндпоинтов на chatId
+[ ] Frontend (React + TS + Tailwind)
+[ ] pgvector / Life Timeline Engine
+```
