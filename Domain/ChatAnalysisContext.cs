@@ -16,6 +16,8 @@ public class ChatAnalysisContext
 
     public int TotalMessages { get; init; }
 
+    public bool IsEmpty => Messages.Count == 0;
+
     public static ChatAnalysisContext Create(
         TelegramExport export)
     {
@@ -37,9 +39,12 @@ public class ChatAnalysisContext
                 .Distinct()
                 .ToList(),
 
-            FirstMessageDate = messages.First().Date,
+            // guard: не падаем на пустом чате
+            FirstMessageDate =
+                messages.Count > 0 ? messages[0].Date : default,
 
-            LastMessageDate = messages.Last().Date,
+            LastMessageDate =
+                messages.Count > 0 ? messages[^1].Date : default,
 
             TotalMessages = messages.Count
         };

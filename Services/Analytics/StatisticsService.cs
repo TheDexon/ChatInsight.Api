@@ -1,6 +1,5 @@
 using ChatInsight.Api.Analysis.Statistics;
 using ChatInsight.Api.Domain;
-using ChatInsight.Api.Models.Telegram;
 using ChatInsight.Api.Services.Text;
 
 namespace ChatInsight.Api.Services.Analytics;
@@ -14,18 +13,18 @@ public class StatisticsService
     {
         _extractor = extractor;
     }
+
     public ChatStatistics Analyze(ChatAnalysisContext context)
     {
-        var messages = context.Messages
-            .Where(x => x.Type == "message")
-            .ToList();
+        // context.Messages уже отфильтрованы (type=message, from != null)
+        var messages = context.Messages;
 
-        var stats = new ChatStatistics();
-
-        stats.TotalMessages = messages.Count;
+        var stats = new ChatStatistics
+        {
+            TotalMessages = messages.Count
+        };
 
         stats.MessagesByAuthor = messages
-            .Where(x => !string.IsNullOrWhiteSpace(x.From))
             .GroupBy(x => x.From!)
             .ToDictionary(
                 g => g.Key,
@@ -49,11 +48,8 @@ public class StatisticsService
             .Key;
 
         var textLengths = messages
-        .Select(x =>
-            _extractor
-                .Extract(x.Text)
-                .Length)
-        .ToList();
+            .Select(x => _extractor.Extract(x.Text).Length)
+            .ToList();
 
         stats.AverageMessageLength =
             textLengths.Count == 0

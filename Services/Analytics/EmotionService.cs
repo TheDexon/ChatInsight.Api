@@ -1,6 +1,8 @@
-﻿using ChatInsight.Api.Analysis.Emotion;
+using ChatInsight.Api.Analysis.Emotion;
+using ChatInsight.Api.Configuration;
 using ChatInsight.Api.Domain;
 using ChatInsight.Api.Services.Text;
+using Microsoft.Extensions.Options;
 
 namespace ChatInsight.Api.Services.Analytics;
 
@@ -8,64 +10,47 @@ public class EmotionService
 {
     private readonly TelegramTextExtractor _extractor;
 
-    private readonly HashSet<string> PositiveWords =
-    [
-        "люблю",
-        "кайф",
-        "супер",
-        "круто",
-        "класс",
-        "хорошо",
-        "отлично",
-        "рад"
-    ];
-
-    private readonly HashSet<string> NegativeWords =
-    [
-        "ненавижу",
-        "плохо",
-        "ужас",
-        "говно",
-        "обидно",
-        "печально"
-    ];
-
-    private readonly HashSet<string> ProfanityWords =
-    [
-        "бля",
-        "блять",
-        "пиздец",
-        "ебать",
-        "нахуй",
-        "сука",
-        "хуй"
-    ];
+    private readonly string[] _positiveWords;
+    private readonly string[] _negativeWords;
+    private readonly string[] _profanityWords;
 
     public EmotionService(
-        TelegramTextExtractor extractor)
+        TelegramTextExtractor extractor,
+        IOptions<EmotionAnalysisOptions> options)
     {
         _extractor = extractor;
+
+        var o = options.Value;
+        _positiveWords = Normalize(o.PositiveWords);
+        _negativeWords = Normalize(o.NegativeWords);
+        _profanityWords = Normalize(o.ProfanityWords);
     }
+
+    private static string[] Normalize(IEnumerable<string> words) =>
+        words
+            .Where(w => !string.IsNullOrWhiteSpace(w))
+            .Select(w => w.ToLowerInvariant())
+            .Distinct()
+            .ToArray();
 
     public EmotionStatistics Analyze(
         ChatAnalysisContext context)
     {
-        var result =
-            new EmotionStatistics();
+        var result = new EmotionStatistics();
 
         foreach (var message in context.Messages)
         {
             var text =
                 _extractor.Extract(message.Text)
-                .ToLower();
+                .ToLowerInvariant();
 
-            if (PositiveWords.Any(text.Contains))
+            if (_positiveWords.Any(text.Contains))
                 result.PositiveMessages++;
 
-            if (NegativeWords.Any(text.Contains))
+            if (_negativeWords.Any(text.Contains))
                 result.NegativeMessages++;
 
-            if (ProfanityWords.Any(text.Contains))
+            if (_profanityWords.Any(text.Contains))
                 result.ProfanityMessages++;
         }
 

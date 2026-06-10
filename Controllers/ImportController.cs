@@ -1,4 +1,4 @@
-﻿using ChatInsight.Api.DTOs;
+using ChatInsight.Api.DTOs;
 using ChatInsight.Api.Parsers;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,44 +6,37 @@ namespace ChatInsight.Api.Controllers;
 
 [ApiController]
 [Route("api/import")]
-public class ImportController : ControllerBase
+public class ImportController : AnalysisControllerBase
 {
-    private readonly TelegramParser _telegramParser;
-
     public ImportController(TelegramParser telegramParser)
+        : base(telegramParser)
     {
-        _telegramParser = telegramParser;
     }
 
     [HttpPost("telegram")]
     public async Task<IActionResult> ImportTelegram(IFormFile file)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest("Файл не загружен.");
+        var (export, error) = await ReadExportAsync(file);
+        if (error is not null) return error;
 
-        await using var stream = file.OpenReadStream();
+        var validated = export!;
 
-        var export = await _telegramParser.ParseAsync(stream);
-
-        if (export == null)
-            return BadRequest("Не удалось прочитать Telegram Export.");
-
-        var participants = export.Messages
+        var participants = validated.Messages
             .Where(m => !string.IsNullOrWhiteSpace(m.From))
             .Select(m => m.From!)
             .Distinct()
             .ToList();
 
-        var dates = export.Messages
+        var dates = validated.Messages
             .Select(m => m.Date)
             .OrderBy(d => d)
             .ToList();
 
         var result = new ImportResultDto
         {
-            ChatName = export.Name,
-            ChatType = export.Type,
-            MessagesCount = export.Messages.Count,
+            ChatName = validated.Name,
+            ChatType = validated.Type,
+            MessagesCount = validated.Messages.Count,
             FirstMessageDate = dates.FirstOrDefault(),
             LastMessageDate = dates.LastOrDefault(),
             Participants = participants

@@ -1,4 +1,4 @@
-﻿namespace ChatInsight.Api.Analysis.Report;
+namespace ChatInsight.Api.Analysis.Report;
 
 public class ReportStatistics
 {

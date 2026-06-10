@@ -1,4 +1,4 @@
-﻿namespace ChatInsight.Api.Analysis.Emotion;
+namespace ChatInsight.Api.Analysis.Emotion;
 
 public class EmotionStatistics
 {

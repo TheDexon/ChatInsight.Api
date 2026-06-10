@@ -1,4 +1,4 @@
-﻿namespace ChatInsight.Api.Analysis.Relationship;
+namespace ChatInsight.Api.Analysis.Relationship;
 
 public class RelationshipReport
 {

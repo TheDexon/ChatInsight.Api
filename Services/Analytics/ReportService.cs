@@ -1,6 +1,5 @@
-﻿using ChatInsight.Api.Analysis.Report;
+using ChatInsight.Api.Analysis.Report;
 using ChatInsight.Api.Domain;
-using ChatInsight.Api.Models.Telegram;
 
 namespace ChatInsight.Api.Services.Analytics;
 
@@ -29,32 +28,18 @@ public class ReportService
         _emotion = emotion;
     }
 
-    public ReportStatistics Analyze(
-        TelegramExport export,
-        ChatAnalysisContext context)
+    // Теперь только context — больше не таскаем export отдельно
+    public ReportStatistics Analyze(ChatAnalysisContext context)
     {
         return new ReportStatistics
         {
-            Statistics =
-                _statistics.Analyze(context),
-
-            Timeline =
-                _timeline.Analyze(export),
-
-            Response =
-                _response.Analyze(export),
-
-            Initiative =
-                _initiative.Analyze(export),
-
-            Topics =
-                _topics.Analyze(context),
-
-            Emotion =
-                _emotion.Analyze(context),
-
-            Summary =
-                $"Сообщений: {context.TotalMessages}"
+            Statistics = _statistics.Analyze(context),
+            Timeline = _timeline.Analyze(context),
+            Response = _response.Analyze(context),
+            Initiative = _initiative.Analyze(context),
+            Topics = _topics.Analyze(context),
+            Emotion = _emotion.Analyze(context),
+            Summary = $"Сообщений: {context.TotalMessages}"
         };
     }
 }

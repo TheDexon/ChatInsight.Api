@@ -1,20 +1,16 @@
 using ChatInsight.Api.Analysis.Response;
-using ChatInsight.Api.Models.Telegram;
+using ChatInsight.Api.Domain;
 
 namespace ChatInsight.Api.Services.Analytics;
 
 public class ResponseService
 {
-    public ResponseStatistics Analyze(TelegramExport export)
+    public ResponseStatistics Analyze(ChatAnalysisContext context)
     {
         var result = new ResponseStatistics();
 
-        var messages = export.Messages
-            .Where(x =>
-                x.Type == "message" &&
-                !string.IsNullOrWhiteSpace(x.From))
-            .OrderBy(x => x.Date)
-            .ToList();
+        // уже отфильтровано и отсортировано по дате
+        var messages = context.Messages;
 
         var responseTimes = new Dictionary<string, List<double>>();
 
@@ -27,8 +23,7 @@ public class ResponseService
                 continue;
 
             var minutes =
-                (current.Date - previous.Date)
-                .TotalMinutes;
+                (current.Date - previous.Date).TotalMinutes;
 
             if (minutes <= 0)
                 continue;
@@ -36,13 +31,13 @@ public class ResponseService
             if (minutes > 1440)
                 continue;
 
-            if (!responseTimes.ContainsKey(current.From!))
+            if (!responseTimes.TryGetValue(current.From!, out var list))
             {
-                responseTimes[current.From!] = [];
+                list = [];
+                responseTimes[current.From!] = list;
             }
 
-            responseTimes[current.From!]
-                .Add(minutes);
+            list.Add(minutes);
         }
 
         result.AverageResponseMinutes =
