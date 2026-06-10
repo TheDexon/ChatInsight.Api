@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-﻿# ChatInsight.Api
+# ChatInsight.Api
 =======
 ﻿# ChatInsight.Api — статус проекта "в работе"
 >>>>>>> 8410af17d17c5622358b595da77b0b68bd80e490
