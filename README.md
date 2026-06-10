@@ -1,4 +1,4 @@
-﻿# ChatInsight.Api — статус проекта
+﻿# ChatInsight.Api — статус проекта "в работе"
 
 Backend для интеллектуального анализа переписок (пока — Telegram Export).
 ASP.NET Core Web API на **.NET 9**, контроллеры + Swagger.
