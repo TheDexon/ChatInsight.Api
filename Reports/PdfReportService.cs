@@ -1,5 +1,6 @@
 using ChatInsight.Api.Analysis.Ai;
 using ChatInsight.Api.Analysis.Emotion;
+using ChatInsight.Api.Analysis.Personality;
 using ChatInsight.Api.Analysis.Statistics;
 using ChatInsight.Api.Analysis.Text;
 using ChatInsight.Api.Analysis.Timeline;
@@ -12,8 +13,8 @@ using QuestPDF.Infrastructure;
 namespace ChatInsight.Api.Reports;
 
 /// <summary>
-/// Рендерит аналитику чата в PDF. Если передан AiInsight — добавляет
-/// секцию AI-анализа в начало отчёта.
+/// Рендерит аналитику чата в PDF. Опционально добавляет AI-анализ и
+/// портреты участников (если переданы).
 /// </summary>
 public class PdfReportService
 {
@@ -34,7 +35,11 @@ public class PdfReportService
         _timeline = timeline;
     }
 
-    public byte[] Build(ChatAnalysisContext context, AiInsight? insight = null)
+
+    public byte[] Build(
+        ChatAnalysisContext context,
+        AiInsight? insight = null,
+        List<PersonalityProfile>? personalities = null)
     {
         var stats = _statistics.Analyze(context);
         var text = _text.Analyze(context);
@@ -55,7 +60,7 @@ public class PdfReportService
 
                 page.Header().Element(c => Header(c, title, context));
                 page.Content().Element(c =>
-                    Content(c, stats, text, emotion, timeline, insight));
+                    Content(c, stats, text, emotion, timeline, insight, personalities));
                 page.Footer().AlignCenter().Text(t =>
                 {
                     t.Span("ChatInsight • ");
@@ -67,10 +72,7 @@ public class PdfReportService
         return document.GeneratePdf();
     }
 
-    private static void Header(
-        IContainer container,
-        string title,
-        ChatAnalysisContext context)
+    private static void Header(IContainer container, string title, ChatAnalysisContext context)
     {
         container.Column(col =>
         {
@@ -93,17 +95,19 @@ public class PdfReportService
         TextStatistics text,
         EmotionStatistics emotion,
         List<TimelineEvent> timeline,
-        AiInsight? insight)
+        AiInsight? insight,
+        List<PersonalityProfile>? personalities)
     {
         container.PaddingVertical(12).Column(col =>
         {
             col.Spacing(16);
 
-            // --- AI-анализ (если есть) ---
             if (insight is not null && !string.IsNullOrWhiteSpace(insight.Summary))
                 AiSection(col, insight);
 
-            // --- Активность ---
+            if (personalities is not null && personalities.Count > 0)
+                PersonalitySection(col, personalities);
+
             Section(col, "Активность");
             col.Item().Text(
                 $"Средняя длина сообщения: {stats.AverageMessageLength:F0} симв.   •   " +
@@ -112,14 +116,10 @@ public class PdfReportService
             if (stats.MessagesByAuthor.Count > 0)
             {
                 col.Item().Text("Сообщений по авторам:").SemiBold();
-                foreach (var a in stats.MessagesByAuthor
-                             .OrderByDescending(x => x.Value))
-                {
+                foreach (var a in stats.MessagesByAuthor.OrderByDescending(x => x.Value))
                     col.Item().Text($"  • {a.Key}: {a.Value}");
-                }
             }
 
-            // --- Эмоции ---
             Section(col, "Эмоции");
             col.Item().Text(
                 $"Позитивных: {emotion.PositiveMessages}   •   " +
@@ -127,21 +127,18 @@ public class PdfReportService
                 $"С матом: {emotion.ProfanityMessages}");
             col.Item().Text($"Индекс токсичности: {emotion.ToxicityScore}%");
 
-            // --- Топ-слова ---
             Section(col, "Частые слова");
             if (text.TopWords.Count == 0)
                 col.Item().Text("Недостаточно данных.").Italic();
             else
                 col.Item().Text(string.Join(",  ", text.TopWords.Take(15)));
 
-            // --- Таймлайн ---
             Section(col, "Ключевые события");
             if (timeline.Count == 0)
                 col.Item().Text("Событий не выделено.").Italic();
             else
                 foreach (var e in timeline)
-                    col.Item().Text(
-                        $"  • {e.Date:dd.MM.yyyy} — {e.Title}: {e.Description}");
+                    col.Item().Text($"  • {e.Date:dd.MM.yyyy} — {e.Title}: {e.Description}");
         });
     }
 
@@ -150,39 +147,66 @@ public class PdfReportService
         col.Item().Background(Colors.Blue.Lighten5).Padding(12).Column(box =>
         {
             box.Spacing(8);
-
-            box.Item().Text("AI-анализ")
-                .FontSize(15).Bold().FontColor(Colors.Blue.Darken2);
+            box.Item().Text("AI-анализ").FontSize(15).Bold().FontColor(Colors.Blue.Darken2);
 
             if (!string.IsNullOrWhiteSpace(insight.Summary))
             {
                 box.Item().Text("Резюме").SemiBold();
                 box.Item().Text(insight.Summary);
             }
-
             if (!string.IsNullOrWhiteSpace(insight.EmotionalTone))
             {
                 box.Item().Text("Эмоциональный фон").SemiBold();
                 box.Item().Text(insight.EmotionalTone);
             }
-
             if (insight.Topics.Count > 0)
             {
                 box.Item().Text("Темы").SemiBold();
                 box.Item().Text(string.Join(",  ", insight.Topics));
             }
-
             if (insight.Dynamics.Count > 0)
             {
                 box.Item().Text("Динамика общения").SemiBold();
                 foreach (var d in insight.Dynamics)
                     box.Item().Text($"  • {d}");
             }
-
             if (!string.IsNullOrWhiteSpace(insight.Model))
                 box.Item().Text($"модель: {insight.Model}")
                     .FontSize(8).FontColor(Colors.Grey.Darken1);
         });
+    }
+
+    private static void PersonalitySection(
+        ColumnDescriptor col, List<PersonalityProfile> people)
+    {
+        Section(col, "Портреты участников");
+
+        foreach (var p in people)
+        {
+            col.Item().Border(1).BorderColor(Colors.Grey.Lighten2)
+                .Padding(10).Column(box =>
+            {
+                box.Spacing(4);
+                box.Item().Text(p.Participant).FontSize(13).Bold();
+
+                if (!string.IsNullOrWhiteSpace(p.Summary))
+                    box.Item().Text(p.Summary);
+
+                if (!string.IsNullOrWhiteSpace(p.CommunicationStyle))
+                    box.Item().Text(t =>
+                    {
+                        t.Span("Стиль: ").SemiBold();
+                        t.Span(p.CommunicationStyle);
+                    });
+
+                if (p.Traits.Count > 0)
+                    box.Item().Text(t =>
+                    {
+                        t.Span("Черты: ").SemiBold();
+                        t.Span(string.Join(", ", p.Traits));
+                    });
+            });
+        }
     }
 
     private static void Section(ColumnDescriptor col, string title)

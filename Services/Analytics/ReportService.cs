@@ -11,6 +11,7 @@ public class ReportService
     private readonly InitiativeService _initiative;
     private readonly TopicService _topics;
     private readonly EmotionService _emotion;
+    private readonly RelationshipService _relationship;
 
     public ReportService(
         StatisticsService statistics,
@@ -18,7 +19,8 @@ public class ReportService
         ResponseService response,
         InitiativeService initiative,
         TopicService topics,
-        EmotionService emotion)
+        EmotionService emotion,
+        RelationshipService relationship)
     {
         _statistics = statistics;
         _timeline = timeline;
@@ -26,9 +28,9 @@ public class ReportService
         _initiative = initiative;
         _topics = topics;
         _emotion = emotion;
+        _relationship = relationship;
     }
 
-    // Теперь только context — больше не таскаем export отдельно
     public ReportStatistics Analyze(ChatAnalysisContext context)
     {
         return new ReportStatistics
@@ -39,6 +41,7 @@ public class ReportService
             Initiative = _initiative.Analyze(context),
             Topics = _topics.Analyze(context),
             Emotion = _emotion.Analyze(context),
+            Relationship = _relationship.Analyze(context),
             Summary = $"Сообщений: {context.TotalMessages}"
         };
     }

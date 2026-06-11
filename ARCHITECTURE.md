@@ -2,9 +2,6 @@
 
 Слои и потоки данных. Статус — `PROJECT_STATUS.md`, план — `ROADMAP.md`.
 
-Система из двух частей: **ChatInsight.Api** (backend) и **chatinsight-web** (frontend),
-связаны по HTTP (REST + CORS).
-
 ```text
 chatinsight-web (React/Vite :5173)
         │  REST + CORS
@@ -16,116 +13,85 @@ ChatInsight.Api (ASP.NET Core :5201)
 
 ---
 
-## Пути данных (backend)
+## Потоки данных
 
-### Импорт (файл → БД, с дозагрузкой)
-
+### Импорт (файл → БД, дозагрузка)
 ```text
-POST /api/import/telegram
-   → ReadExportAsync (валидация) → TelegramParser → TelegramExport
-   → ChatImportService: ищет чат по SourceId;
-        есть → добавляет только новые сообщения (по TelegramId), сбрасывает кэш AI
-        нет  → создаёт новый чат
-   → PostgreSQL → ответ: chatId, isNewChat, newMessages
+POST /api/import/telegram → ReadExportAsync → TelegramParser → TelegramExport
+   → ChatImportService: по SourceId есть → добавить новые (по TelegramId), сбросить кэш AI
+                        нет → создать чат
+   → PostgreSQL → {chatId, isNewChat, newMessages}
 ```
 
-### Анализ из БД (статистика / PDF / сравнение)
-
+### Анализ (БД → отчёт/PDF/сравнение)
 ```text
-GET /api/chats/{id}/report(.pdf) | /compare
+GET /api/chats/{id}/report(.pdf)|/compare
    → ChatContextLoader → ChatAnalysisContext.Create (фильтр+сортировка, 1 раз)
-   → ReportService / ComparisonService / PdfReportService → JSON | PDF
+   → ReportService (вкл. RelationshipService) / ComparisonService / PdfReportService
 ```
 
-### AI (БД → Ollama → кэш в БД)
-
+### AI (БД → Ollama → кэш)
 ```text
-GET /api/chats/{id}/insights | /personality
-   → ChatContextLoader → ChatAnalysisContext
-   → *CacheService: есть в БД и не refresh? → отдать мгновенно (X-Insight-Cache: hit)
-                    иначе → *Service (Ollama, JSON Schema) → сохранить → отдать (miss)
-   → Ollama недоступна → 503
+GET /api/chats/{id}/insights|/personality
+   → *CacheService: есть и не refresh → отдать (X-Insight-Cache: hit)
+                    иначе → *Service (Ollama, JSON Schema) → сохранить → отдать
+   → недоступна → 503
+PDF ?ai=true → берёт insight + portraits из кэша/GetOrCreate и встраивает в документ
 ```
 
-Принцип: сообщения фильтруются/сортируются один раз в `ChatAnalysisContext.Create`.
-Сервисы не знают, откуда данные (файл или БД).
+Принцип: фильтрация/сортировка один раз в `ChatAnalysisContext.Create`; сервисы не
+знают, откуда данные.
 
 ---
 
-## Backend: слои и папки
+## Слои (backend)
 
-| Папка | Что лежит |
+| Папка | Что |
 |---|---|
-| `Models/Telegram/` | `TelegramExport` (+`Id`), `TelegramMessage` |
-| `Models/Domain/` | сущности БД: `Chat` (+`SourceId`), `Message`, `ChatInsightRecord`, `PersonalityRecord` |
-| `Parsers/` | `TelegramParser` |
-| `Data/` | `ChatInsightDbContext`, `Migrations/` |
-| `Domain/` | `ChatAnalysisContext` (рантайм-контекст) |
-| `Services/Text/` | `TelegramTextExtractor`, `TextCleaner` |
-| `Services/Import/` | `ChatImportService` |
-| `Services/Analytics/` | `*Service`, `ReportService`, `ComparisonService`, `ChatContextLoader` |
+| `Models/Telegram/` | `TelegramExport`(+Id), `TelegramMessage` |
+| `Models/Domain/` | `Chat`(+SourceId), `Message`, `ChatInsightRecord`, `PersonalityRecord` |
+| `Parsers/` · `Data/` · `Domain/` | парсер · `DbContext`+миграции · `ChatAnalysisContext` |
+| `Services/Text/` · `Services/Import/` | текст · импорт (upsert) |
+| `Services/Analytics/` | `*Service`, `ReportService`, `RelationshipService`, `ComparisonService`, `ChatContextLoader` |
 | `Services/Ai/` | `OllamaClient`, `AiInsightService(+Cache)`, `PersonalityService(+Cache)` |
-| `Reports/` | `PdfReportService` |
-| `Analysis/<Модуль>/` | DTO результатов |
-| `Controllers/` | по модулю + `ChatsController`, `AiController`, `PersonalityController`, `ComparisonController`, `ImportController` |
-| `Configuration/` | `EmotionAnalysisOptions`, `OllamaOptions` |
+| `Reports/` | `PdfReportService` (AI-анализ + портреты опционально) |
+| `Analysis/<Модуль>/` · `Controllers/` · `Configuration/` | DTO · HTTP · опции |
 
-### Соглашения по именам
-- `ChatAnalysisContext` (`Domain/`) — рантайм-контекст анализа, НЕ база.
-- `ChatInsightDbContext` (`Data/`) — EF Core `DbContext`.
+`RelationshipService` инжектит `InitiativeService`+`ResponseService` и считает
+балансы активности/инициативы/ответов; результат — в `ReportStatistics.Relationship`.
 
 ---
 
 ## Модель БД
 
 ```text
-Chat 1 ─< Many Message            (FK ChatId, cascade)
-Chat 1 ─1 ChatInsightRecord       (uniq ChatId)
-Chat 1 ─< Many PersonalityRecord  (uniq ChatId+Participant)
+Chat 1─< Message ; Chat 1─1 ChatInsightRecord ; Chat 1─< PersonalityRecord (uniq ChatId+Participant)
 
-Chat:    Id(Guid), SourceId(long), Name, Type, ImportedAt, UpdatedAt?, MessageCount
-Message: Id(long), ChatId, TelegramId, Type, Date(ts без tz), Author?, Text, RawTextJson?
-Insights:      ChatId, Summary, EmotionalTone, Topics[], Dynamics[], Model, GeneratedAt
-Personalities: ChatId, Participant, Summary, CommunicationStyle, Traits[], Model, GeneratedAt
+Chat:    Id, SourceId, Name, Type, ImportedAt, UpdatedAt?, MessageCount
+Message: Id, ChatId, TelegramId, Type, Date(ts без tz), Author?, Text, RawTextJson?
+Insights/Personalities: кэш AI (списки → text[] Npgsql)
 ```
-
-`List<string>` (Topics, Dynamics, Traits) → нативный `text[]` Postgres (Npgsql).
 
 ---
 
 ## Frontend (chatinsight-web)
 
 ```text
-src/
-  api.ts            REST-клиент (axios, BASE_URL → :5201)
-  types.ts          типы под ответы API
-  components/
-    Layout.tsx      шапка + навигация
-    Charts.tsx      Recharts: активность по часам, по авторам
-  pages/
-    Upload.tsx      загрузка result.json
-    ChatList.tsx    список чатов из БД
-    ChatDetail.tsx  метрики, графики, AI-блоки (по кнопке), сравнение, PDF
+src/api.ts · types.ts
+src/components/  Layout.tsx · Charts.tsx (Recharts: часы, авторы)
+src/pages/       Upload.tsx · ChatList.tsx · ChatDetail.tsx (метрики, графики,
+                 баланс отношений, AI-блоки по кнопке, сравнение, PDF)
 ```
-
-Стиль: Spectral (display) + Inter (body) + JetBrains Mono (данные), индиго-акцент.
-AI-блоки грузятся по нажатию (модель думает ~60с), повторно — мгновенно из кэша.
-
----
-
-## Конфигурация
-
-- `ConnectionStrings:Postgres` — БД (локально из `docker-compose.yml`; прод — env).
-- `Ollama` — адрес/модель/таймаут/выборка. Модель: `llama3.1:8b`.
-- `EmotionAnalysis` — словари. CORS `frontend` → `localhost:5173`.
-- HTTPS-редирект включается только вне Development (в деве фронт ходит по http).
-- EF: Npgsql + Design, мажор = таргету (`9.x` под `net9.0`).
+Spectral (display) + Inter + JetBrains Mono; индиго-акцент. AI-блоки — по кнопке.
 
 ---
 
 ## Точки расширения
 
 - **Async AI:** `BackgroundService`/очередь, статус задачи, опрос с фронта.
-- **AI-портреты в PDF:** `PdfReportService` принимает `List<PersonalityProfile>`.
-- **pgvector:** расширение Postgres, векторное поле в `Message`, Npgsql.Pgvector.
+- **pgvector:** расширение Postgres, векторное поле в `Message`.
 - **Новые источники:** парсер Discord/WhatsApp/VK → та же модель `Message`.
+
+## Конфигурация
+`ConnectionStrings:Postgres` · `Ollama` (модель `llama3.1:8b`) · `EmotionAnalysis` ·
+CORS `frontend`→:5173 · HTTPS-редирект только вне Development · EF: Npgsql+Design, мажор=`net9.0`.

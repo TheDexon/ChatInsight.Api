@@ -14,5 +14,7 @@ public class ReportStatistics
 
     public object? Emotion { get; set; }
 
+    public object? Relationship { get; set; }
+
     public string Summary { get; set; } = "";
 }

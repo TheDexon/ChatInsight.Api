@@ -7,8 +7,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ChatInsight.Api.Services.Ai;
 
 /// <summary>
-/// Кэш AI-портретов. Считаем один раз на чат (по всем участникам),
-/// сохраняем в БД, дальше отдаём мгновенно. refresh=true — пересчёт.
+/// Кэш AI-портретов. Считаем один раз на чат, сохраняем в БД,
+/// дальше отдаём мгновенно. refresh=true — пересчёт.
 /// </summary>
 public class PersonalityCacheService
 {
@@ -23,6 +23,19 @@ public class PersonalityCacheService
         _svc = svc;
     }
 
+    /// <summary>Только чтение из кэша (модель НЕ зовётся). Пусто — если ещё не считали.</summary>
+    public async Task<List<PersonalityProfile>> GetCachedAsync(
+        Guid chatId,
+        CancellationToken ct = default)
+    {
+        var existing = await _db.Personalities
+            .AsNoTracking()
+            .Where(x => x.ChatId == chatId)
+            .ToListAsync(ct);
+
+        return existing.Select(ToDto).ToList();
+    }
+
     public async Task<(List<PersonalityProfile> Profiles, bool FromCache)> GetOrCreateAsync(
         ChatAnalysisContext context,
         Guid chatId,
@@ -35,14 +48,12 @@ public class PersonalityCacheService
             .ToListAsync(ct);
 
         var participants = context.Participants;
-
         var covers = participants.Count > 0 &&
             participants.All(p => existing.Any(e => e.Participant == p));
 
         if (existing.Count > 0 && covers && !refresh)
             return (existing.Select(ToDto).ToList(), true);
 
-        // считаем заново (по всем участникам) и заменяем
         var generated = await _svc.AnalyzeAsync(context, ct);
 
         var old = await _db.Personalities

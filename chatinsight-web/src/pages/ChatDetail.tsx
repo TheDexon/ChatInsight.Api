@@ -3,8 +3,10 @@ import { useParams } from "react-router-dom";
 import {
   getReport, getInsights, getPersonality, getComparison, reportPdfUrl,
 } from "../api";
-import type { Report, AiInsight, PersonalityProfile, PeriodComparison } from "../types";
-import { HourChart, AuthorChart } from "../components/Charts";
+import type {
+  Report, AiInsight, PersonalityProfile, PeriodComparison, Relationship,
+} from "../types";
+import { HourChart, AuthorChart, DayChart } from "../components/Charts";
 
 export default function ChatDetail() {
   const { id = "" } = useParams();
@@ -28,12 +30,10 @@ export default function ChatDetail() {
           <div className="font-mono text-xs text-muted mb-1">отчёт по переписке</div>
           <h1 className="font-display text-3xl font-semibold">Анализ</h1>
         </div>
-        <div className="flex gap-2">
-          <a href={reportPdfUrl(id, true)} target="_blank" rel="noreferrer"
-            className="bg-ink text-paper px-4 py-2 rounded-md text-sm hover:bg-accent transition-colors">
-            Скачать PDF
-          </a>
-        </div>
+        <a href={reportPdfUrl(id, true)} target="_blank" rel="noreferrer"
+          className="bg-ink text-paper px-4 py-2 rounded-md text-sm hover:bg-accent transition-colors">
+          Скачать PDF
+        </a>
       </header>
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -42,6 +42,18 @@ export default function ChatDetail() {
         <Stat label="активный час" value={`${s.mostActiveHour}:00`} />
         <Stat label="токсичность" value={`${e.toxicityScore}%`} accent={e.toxicityScore > 5} />
       </section>
+
+      {report.relationship && report.relationship.dominantParticipant && (
+        <RelationshipBlock rel={report.relationship} />
+      )}
+
+      <Block title="Активность по дням">
+        <DayChart byDay={s.messagesByDay} />
+      </Block>
+
+      <Block title="Эмоциональный фон">
+        <EmotionBars e={e} total={s.totalMessages} />
+      </Block>
 
       <Block title="Активность по часам">
         <HourChart byHour={s.messagesByHour} />
@@ -54,6 +66,69 @@ export default function ChatDetail() {
       <AiInsightBlock id={id} />
       <PersonalityBlock id={id} />
       <CompareBlock id={id} />
+    </div>
+  );
+}
+
+function EmotionBars({ e, total }: {
+  e: Report["emotion"]; total: number;
+}) {
+  const rows = [
+    { label: "Позитивные", value: e.positiveMessages, color: "bg-sage" },
+    { label: "Негативные", value: e.negativeMessages, color: "bg-ember" },
+    { label: "С матом", value: e.profanityMessages, color: "bg-accent" },
+  ];
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => (
+        <div key={r.label}>
+          <div className="flex justify-between text-xs mb-1">
+            <span>{r.label}</span>
+            <span className="font-mono text-muted">
+              {r.value} {total > 0 && `· ${Math.round((r.value / total) * 100)}%`}
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-line overflow-hidden">
+            <div className={`h-full ${r.color}`} style={{ width: `${(r.value / max) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RelationshipBlock({ rel }: { rel: Relationship }) {
+  return (
+    <section>
+      <h2 className="font-display text-xl mb-4">Баланс отношений</h2>
+      <div className="rounded-xl border border-line bg-card p-5 space-y-5">
+        <p className="text-sm">{rel.summary}</p>
+        <BalanceBar label="Активность" left={rel.dominantParticipant} right={rel.secondaryParticipant} value={rel.activityBalance} />
+        <BalanceBar label="Инициатива" left={rel.dominantParticipant} right={rel.secondaryParticipant} value={rel.initiativeBalance} />
+        <BalanceBar label="Ответы" left={rel.dominantParticipant} right={rel.secondaryParticipant} value={rel.responseBalance} />
+      </div>
+    </section>
+  );
+}
+
+function BalanceBar({ label, left, right, value }: {
+  label: string; left: string; right: string; value: number;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between text-xs text-muted mb-1.5">
+        <span className="font-mono">{label}</span>
+        <span><span className="text-ink">{value}%</span> / {100 - value}%</span>
+      </div>
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-line">
+        <div className="bg-accent" style={{ width: `${value}%` }} />
+        <div className="bg-accent/30" style={{ width: `${100 - value}%` }} />
+      </div>
+      <div className="flex justify-between text-xs mt-1">
+        <span className="font-medium truncate max-w-[45%]">{left}</span>
+        <span className="text-muted truncate max-w-[45%] text-right">{right}</span>
+      </div>
     </div>
   );
 }

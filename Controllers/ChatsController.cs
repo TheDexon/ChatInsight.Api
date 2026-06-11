@@ -1,4 +1,5 @@
 using ChatInsight.Api.Analysis.Ai;
+using ChatInsight.Api.Analysis.Personality;
 using ChatInsight.Api.Data;
 using ChatInsight.Api.Reports;
 using ChatInsight.Api.Services.Ai;
@@ -17,62 +18,48 @@ public class ChatsController : ControllerBase
     private readonly ReportService _report;
     private readonly PdfReportService _pdf;
     private readonly AiInsightCacheService _aiCache;
+    private readonly PersonalityCacheService _personaCache;
 
     public ChatsController(
         ChatInsightDbContext db,
         ChatContextLoader loader,
         ReportService report,
         PdfReportService pdf,
-        AiInsightCacheService aiCache)
+        AiInsightCacheService aiCache,
+        PersonalityCacheService personaCache)
     {
         _db = db;
         _loader = loader;
         _report = report;
         _pdf = pdf;
         _aiCache = aiCache;
+        _personaCache = personaCache;
     }
 
-    /// <summary>Список сохранённых чатов.</summary>
     [HttpGet]
     public async Task<IActionResult> List()
     {
         var chats = await _db.Chats
             .AsNoTracking()
             .OrderByDescending(c => c.ImportedAt)
-            .Select(c => new
-            {
-                c.Id,
-                c.Name,
-                c.Type,
-                c.MessageCount,
-                c.ImportedAt
-            })
+            .Select(c => new { c.Id, c.Name, c.Type, c.MessageCount, c.ImportedAt })
             .ToListAsync();
 
         return Ok(chats);
     }
 
-    /// <summary>Метаданные одного чата.</summary>
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id)
     {
         var chat = await _db.Chats
             .AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(c => new
-            {
-                c.Id,
-                c.Name,
-                c.Type,
-                c.MessageCount,
-                c.ImportedAt
-            })
+            .Select(c => new { c.Id, c.Name, c.Type, c.MessageCount, c.ImportedAt })
             .FirstOrDefaultAsync();
 
         return chat is null ? NotFound() : Ok(chat);
     }
 
-    /// <summary>Полный отчёт (JSON) из БД по сохранённому чату.</summary>
     [HttpGet("{id:guid}/report")]
     public async Task<IActionResult> Report(Guid id)
     {
@@ -84,8 +71,8 @@ public class ChatsController : ControllerBase
     }
 
     /// <summary>
-    /// Отчёт в PDF. По умолчанию AI-секция добавляется, только если инсайт уже
-    /// в кэше (быстро). ai=true — посчитать инсайт при необходимости (дольше).
+    /// Отчёт в PDF. По умолчанию AI-секции добавляются только из кэша (быстро).
+    /// ai=true — посчитать AI-анализ и портреты при необходимости (дольше).
     /// </summary>
     [HttpGet("{id:guid}/report.pdf")]
     public async Task<IActionResult> ReportPdf(
@@ -98,26 +85,31 @@ public class ChatsController : ControllerBase
             return NotFound("Чат не найден.");
 
         AiInsight? insight;
+        List<PersonalityProfile> personas = [];
+
         if (ai)
         {
-            // гарантированно с AI; если Ollama недоступна — PDF без AI, не падаем
+            // гарантированно с AI; если Ollama недоступна — PDF без AI-частей
             try
             {
-                (insight, _) = await _aiCache.GetOrCreateAsync(
-                    context, id, refresh: false, ct);
+                (insight, _) = await _aiCache.GetOrCreateAsync(context, id, false, ct);
+                (personas, _) = await _personaCache.GetOrCreateAsync(context, id, false, ct);
             }
             catch (OllamaUnavailableException)
             {
-                insight = null;
+                insight = await _aiCache.GetCachedAsync(id, ct);
+                personas = await _personaCache.GetCachedAsync(id, ct);
             }
         }
         else
         {
-            // только если уже посчитано раньше — модель не зовём
+            // только то, что уже посчитано — модель не зовём
             insight = await _aiCache.GetCachedAsync(id, ct);
+            personas = await _personaCache.GetCachedAsync(id, ct);
         }
 
-        var bytes = _pdf.Build(context, insight);
+        var bytes = _pdf.Build(
+            context, insight, personas.Count > 0 ? personas : null);
 
         var safeName = string.IsNullOrWhiteSpace(context.Export.Name)
             ? "chat"

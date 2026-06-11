@@ -18,6 +18,15 @@ export interface ImportResult {
   participants: string[];
 }
 
+export interface Relationship {
+  activityBalance: number;
+  initiativeBalance: number;
+  responseBalance: number;
+  dominantParticipant: string;
+  secondaryParticipant: string;
+  summary: string;
+}
+
 export interface Report {
   statistics: {
     totalMessages: number;
@@ -35,6 +44,7 @@ export interface Report {
   };
   topics: { topics: { name: string; count: number }[] };
   timeline: { title: string; description: string; date: string }[];
+  relationship: Relationship | null;
   summary: string;
 }
 
