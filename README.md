@@ -1,58 +1,44 @@
 # ChatInsight.Api
 
 Backend для интеллектуального анализа переписок. Принимает экспорт Telegram
-(`result.json`) и считает статистику, темы, эмоции, скорость ответа, инициативу,
-таймлайн и отношения — отдаёт результат как JSON через REST API.
+(`result.json`), сохраняет в PostgreSQL и выдаёт аналитику: статистику, темы,
+эмоции, таймлайн, **AI-инсайты** (локальная модель) и **PDF-отчёт**.
 
-**Стек:** ASP.NET Core Web API на **.NET 10**, контроллеры, Swagger.
-Пока всё считается в памяти за один запрос — без базы и без AI (это в плане).
+**Стек:** ASP.NET Core (**.NET 9**) · PostgreSQL + EF Core · Ollama (llama3.1) · QuestPDF · Swagger.
 
 ---
 
 ## Быстрый старт
 
 ```bash
-dotnet build
+docker compose up -d          # Postgres
+dotnet ef database update     # миграции (первый раз)
+ollama pull llama3.1:8b       # AI-модель (один раз)
 dotnet run
 ```
 
-Swagger: `https://localhost:7015/swagger` (или `http://localhost:5201`).
-Грузи `result.json` (Telegram → Экспорт истории чата → JSON) в любой POST-эндпоинт.
-
-> Нужен **.NET 10 SDK** (`dotnet --list-sdks`). Если стоит только 9.x —
-> поменяй `<TargetFramework>` в `ChatInsight.Api.csproj` на `net9.0`.
+Swagger: `http://localhost:5201/swagger`.
 
 ---
 
-## Эндпоинты
+## Основной флоу
 
-| Маршрут | Что делает |
-|---|---|
-| `POST /api/import/telegram` | метаданные чата (имя, участники, даты, кол-во) |
-| `POST /api/analysis/basic` | статистика активности |
-| `POST /api/text` | текстовая аналитика (топ-слова и т.д.) |
-| `POST /api/topics` | темы (частотность слов) |
-| `POST /api/emotion` | эмоции и toxicity |
-| `POST /api/response` | скорость ответа по авторам |
-| `POST /api/initiative` | кто чаще начинает диалог |
-| `POST /api/timeline` | события: начало, пики, паузы, всплески |
-| `POST /api/relationship` | баланс активности, доминирующий участник |
-| `POST /api/report` | всё сразу одним отчётом |
-
-Все принимают `IFormFile file` (`result.json`), `multipart/form-data`.
+1. `POST /api/import/telegram` — загрузить `result.json` → получить `chatId`.
+2. `GET /api/chats/{id}/report` — сводный отчёт (JSON).
+3. `GET /api/chats/{id}/report.pdf` — отчёт в PDF.
+4. `GET /api/chats/{id}/insights` — AI-выводы (summary, тон, темы, динамика).
 
 ---
 
 ## Документация
 
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** — что сделано, на чём остановились, что дальше.
-- **[ROADMAP.md](ROADMAP.md)** — план развития (БД → AI → продукт).
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — слои, поток данных, соглашения по папкам.
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** — что сделано и сверка с идеей.
+- **[ROADMAP.md](ROADMAP.md)** — план (доводка MVP → фронт → v2/v3).
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — слои, пути данных, БД, AI.
 
 ---
 
 ## Статус
 
-MVP-аналитика готова и собирается. Следующий рубеж — база данных (PostgreSQL +
-EF Core), сохранение импорта, экспорт отчёта в PDF, затем AI на Ollama.
-Подробнее — в `ROADMAP.md`.
+MVP из идеи закрыт, кроме графиков (они будут на фронте): импорт → PostgreSQL →
+9 аналитических модулей → AI-инсайты → PDF. Дальше — кэш/асинхронность AI и фронтенд.
