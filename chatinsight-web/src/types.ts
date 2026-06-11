@@ -1,0 +1,78 @@
+export interface ChatListItem {
+  id: string;
+  name: string;
+  type: string;
+  messageCount: number;
+  importedAt: string;
+}
+
+export interface ImportResult {
+  chatId: string;
+  chatName: string;
+  chatType: string;
+  messagesCount: number;
+  newMessages: number;
+  isNewChat: boolean;
+  firstMessageDate: string;
+  lastMessageDate: string;
+  participants: string[];
+}
+
+export interface Report {
+  statistics: {
+    totalMessages: number;
+    averageMessageLength: number;
+    mostActiveHour: number;
+    messagesByAuthor: Record<string, number>;
+    messagesByHour: Record<string, number>;
+    messagesByDay: Record<string, number>;
+  };
+  emotion: {
+    positiveMessages: number;
+    negativeMessages: number;
+    profanityMessages: number;
+    toxicityScore: number;
+  };
+  topics: { topics: { name: string; count: number }[] };
+  timeline: { title: string; description: string; date: string }[];
+  summary: string;
+}
+
+export interface AiInsight {
+  summary: string;
+  emotionalTone: string;
+  topics: string[];
+  dynamics: string[];
+  model: string;
+}
+
+export interface PersonalityProfile {
+  participant: string;
+  summary: string;
+  communicationStyle: string;
+  traits: string[];
+  model: string;
+}
+
+export interface PeriodSummary {
+  from: string;
+  to: string;
+  messages: number;
+  avgMessageLength: number;
+  positiveMessages: number;
+  negativeMessages: number;
+  toxicityScore: number;
+  avgResponseMinutes: number;
+  topTopics: string[];
+}
+
+export interface PeriodComparison {
+  first: PeriodSummary;
+  second: PeriodSummary;
+  messagesDelta: number;
+  toxicityDelta: number;
+  responseMinutesDelta: number;
+  newTopics: string[];
+  fadedTopics: string[];
+  summary: string;
+}

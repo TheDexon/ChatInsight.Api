@@ -1,10 +1,10 @@
-# ChatInsight.Api — статус проекта
+# ChatInsight — статус проекта
 
-Backend для анализа переписок (Telegram Export).
-ASP.NET Core **.NET 9** + **PostgreSQL (EF Core)** + **AI (Ollama / llama3.1)**.
+Платформа анализа переписок: backend (**ASP.NET Core .NET 9** + PostgreSQL + Ollama)
+и frontend (**React + Vite + Tailwind**).
 
 Срез: что сделано, на чём остановились, что дальше. Идея — в `1.docx`.
-Слои — в `ARCHITECTURE.md`, план — в `ROADMAP.md`.
+Слои — `ARCHITECTURE.md`, план — `ROADMAP.md`.
 
 ---
 
@@ -16,12 +16,12 @@ ASP.NET Core **.NET 9** + **PostgreSQL (EF Core)** + **AI (Ollama / llama3.1)**.
 | Сохранение сообщений | ✅ PostgreSQL + EF Core |
 | Анализ активности | ✅ |
 | Анализ скорости ответов | ✅ |
-| Графики | ⛔ нет (на фронтенде) |
+| Графики | ✅ на фронте (Recharts) |
 | Базовый AI-отчёт | ✅ Ollama / llama3.1 |
-| Экспорт PDF | ✅ QuestPDF (+ AI-резюме внутри) |
+| Экспорт PDF | ✅ QuestPDF (+ AI-резюме) |
 
-**MVP закрыт, кроме графиков.** Сверх MVP: темы, эмоции, инициатива, таймлайн,
-отношения, **сравнение периодов**, **AI-портреты участников**.
+**MVP 1.0 закрыт полностью.** Сверх MVP: темы, эмоции, инициатива, таймлайн,
+отношения, сравнение периодов, AI-портреты участников, веб-интерфейс.
 
 > Отличия от стека идеи: `net9.0` вместо `.NET 10`; `pgvector` пока не подключён (v2.0).
 
@@ -29,74 +29,55 @@ ASP.NET Core **.NET 9** + **PostgreSQL (EF Core)** + **AI (Ollama / llama3.1)**.
 
 ## Что работает ✅
 
+### Backend
 - [x] Web API (.NET 9), Swagger, PostgreSQL + EF Core, Docker Compose
-- [x] Импорт Telegram с **дозагрузкой**: повторный импорт того же чата (по `SourceId`)
-      добавляет только новые сообщения (по `TelegramId`) и сбрасывает кэш AI
-- [x] Чтение из БД по `chatId`: список, метаданные, отчёт
+- [x] Импорт Telegram с дозагрузкой (по `SourceId` + `TelegramId`), сброс кэша AI
+- [x] Чтение из БД по `chatId`
 - [x] 9 аналитических модулей на едином `ChatAnalysisContext`
-- [x] **Сравнение периодов** («было → стало»: активность, токсичность, темы, скорость)
-- [x] **AI-инсайты** (summary, тон, темы, динамика) — кэш в БД
-- [x] **AI-портреты участников** (характер, стиль, черты) — кэш в БД
-- [x] **PDF-отчёт** (QuestPDF) с опциональной AI-секцией
-- [x] Все AI-вызовы: structured output (JSON Schema), 503 при недоступности Ollama
+- [x] Сравнение периодов («было → стало»)
+- [x] AI-инсайты и AI-портреты участников (Ollama, JSON Schema, кэш в БД)
+- [x] PDF-отчёт (QuestPDF) с опциональной AI-секцией
+- [x] HTTPS-редирект отключён в Development (фронт ходит по http)
+
+### Frontend (chatinsight-web)
+- [x] Загрузка `result.json` (страница `/upload`)
+- [x] Список чатов из БД (`/`)
+- [x] Страница анализа (`/chat/:id`): метрики, графики (часы, авторы),
+      скачивание PDF, AI-блоки (инсайты, портреты, сравнение) по кнопке
+- [x] CORS-связка с бэкендом, обработка ошибок и пустых состояний
 
 ---
 
-## Эндпоинты
+## Эндпоинты API
 
 | Маршрут | Метод | Что делает |
 |---|---|---|
-| `/api/import/telegram` | POST | импорт/дозагрузка, возвращает `chatId`, `newMessages`, `isNewChat` |
+| `/api/import/telegram` | POST | импорт/дозагрузка → `chatId`, `newMessages`, `isNewChat` |
 | `/api/chats` · `/api/chats/{id}` | GET | список / метаданные |
 | `/api/chats/{id}/report` · `.pdf` | GET | отчёт JSON / PDF (`?ai=true`) |
 | `/api/chats/{id}/insights` | GET | AI-выводы (кэш, `?refresh=true`) |
-| `/api/chats/{id}/personality` | GET | AI-портреты участников (кэш, `?refresh=true`) |
+| `/api/chats/{id}/personality` | GET | AI-портреты (кэш, `?refresh=true`) |
 | `/api/chats/{id}/compare` | GET | сравнение периодов (`?splitDate=...`) |
-| `/api/analysis/basic`, `/api/text`, … | POST | разовые прогоны по файлу |
 
 ---
 
 ## Хранение
 
-PostgreSQL, EF Core. Таблицы:
-- **Chats** — `Id`, `SourceId` (telegram id чата), `Name`, `Type`, `ImportedAt`, `UpdatedAt`, `MessageCount`.
-- **Messages** — `Id`, `ChatId`(FK), `TelegramId`, `Type`, `Date`, `Author`, `Text`, `RawTextJson`.
-- **Insights** — кэш AI-инсайтов (1 на чат).
-- **Personalities** — кэш AI-портретов (1 на пару чат+участник).
-
-Строка подключения — `ConnectionStrings:Postgres`; прод — env `ConnectionStrings__Postgres`.
-
----
-
-## AI-слой
-
-- Ollama локально, модель в конфиге (`Ollama:Model`). Рабочая — **`llama3.1:8b`**
-  (русский, без морализаторства; `qwen2.5:14b` сваливалась в китайский — непригодна).
-- Ответы гарантируются **JSON Schema**. Недоступна → 503, не падаем.
-- Тяжёлые AI-результаты (инсайты, портреты) **кэшируются в БД** — считаются один раз.
+PostgreSQL, EF Core. Таблицы: **Chats** (+`SourceId`), **Messages**,
+**Insights** (кэш инсайтов, 1 на чат), **Personalities** (кэш портретов, 1 на
+пару чат+участник). Строка подключения — `ConnectionStrings:Postgres`.
 
 ---
 
 ## Чего ещё нет ⛔
 
-- [ ] **Графики / Frontend** (React + TS + Tailwind) — последний пункт MVP.
-- [ ] **Асинхронный AI** (запустил → забрал позже) — нужен с фронтом.
+- [ ] **Асинхронный AI** (запустил → забрал позже) — фронт сейчас ждёт ответ синхронно.
 - [ ] **Relationship**: `InitiativeBalance` / `ResponseBalance` не считаются.
-- [ ] **pgvector**, Life Timeline, групповой анализ, мультиплатформа — v2.0–3.0.
-- [ ] Старые чаты (импортированные до `SourceId`) имеют `SourceId=0` — не склеятся при дозагрузке.
-
----
-
-## Запуск
-
-```bash
-docker compose up -d
-dotnet ef database update
-ollama pull llama3.1:8b
-dotnet run
-```
-
-Swagger: `http://localhost:5201/swagger`.
+- [ ] **AI-портреты внутри PDF** (пока только в вебе и JSON).
+- [ ] **pgvector**, Life Timeline, эволюция личности — v2.0.
+- [ ] Группы, мультиплатформа (Discord/WhatsApp/VK), SaaS — v3.0.
+- [ ] Старые чаты (до `SourceId`) имеют `SourceId=0` — не склеятся при дозагрузке.
+- [ ] Фронт — рабочий MVP-каркас (без пагинации, авторизации, вылизанной вёрстки).
 
 ---
 
@@ -107,8 +88,9 @@ Swagger: `http://localhost:5201/swagger`.
 [✓] 9 модулей аналитики + сравнение периодов
 [✓] AI-инсайты + AI-портреты (кэш в БД)
 [✓] PDF-отчёт с AI
+[✓] Frontend: React + графики + AI-блоки   ← MVP закрыт
 
-[ ] Frontend + графики
-[ ] Async AI
-[ ] pgvector / v2.0+
+[ ] Async AI · AI-портреты в PDF
+[ ] pgvector / эволюция личности (v2)
+[ ] Группы / мультиплатформа / SaaS (v3)
 ```

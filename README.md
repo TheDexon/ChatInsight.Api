@@ -1,36 +1,57 @@
-# ChatInsight.Api
+# ChatInsight
 
-Backend для интеллектуального анализа переписок. Принимает экспорт Telegram
-(`result.json`), сохраняет в PostgreSQL и выдаёт аналитику: статистику, темы,
-эмоции, таймлайн, сравнение периодов, **AI-инсайты**, **AI-портреты участников**
-и **PDF-отчёт**.
+Платформа для интеллектуального анализа личных переписок. Импортирует экспорт
+Telegram, сохраняет в PostgreSQL и выдаёт статистику, темы, эмоции, таймлайн,
+сравнение периодов, **AI-инсайты**, **AI-портреты участников** и **PDF-отчёт** —
+с веб-интерфейсом и графиками.
 
-**Стек:** ASP.NET Core (**.NET 9**) · PostgreSQL + EF Core · Ollama (llama3.1) · QuestPDF · Swagger.
+Репозиторий состоит из двух частей:
+
+- **ChatInsight.Api** — backend (ASP.NET Core .NET 9, PostgreSQL, Ollama, QuestPDF).
+- **chatinsight-web** — frontend (React + TypeScript + Vite + Tailwind).
 
 ---
 
-## Быстрый старт
+## Стек
+
+**Backend:** ASP.NET Core (.NET 9) · EF Core · PostgreSQL · Ollama (llama3.1) · QuestPDF · Swagger
+**Frontend:** React · TypeScript · Vite · TailwindCSS · Recharts
+
+---
+
+## Запуск
+
+### 1. Backend
 
 ```bash
+cd ChatInsight.Api
 docker compose up -d          # Postgres
 dotnet ef database update     # миграции
 ollama pull llama3.1:8b       # AI-модель (один раз)
-dotnet run
+dotnet run                    # http://localhost:5201 (Swagger: /swagger)
 ```
 
-Swagger: `http://localhost:5201/swagger`.
+### 2. Frontend
+
+```bash
+cd chatinsight-web
+npm install
+npm run dev                   # http://localhost:5173
+```
+
+Бэкенд в Development работает по `http://localhost:5201` (HTTPS-редирект в деве
+отключён), CORS настроен под `localhost:5173`.
 
 ---
 
-## Основной флоу
+## Что умеет
 
-1. `POST /api/import/telegram` — загрузить `result.json` → `chatId`
-   (повторный импорт того же чата **дополняет** его новыми сообщениями).
-2. `GET /api/chats/{id}/report` — сводный отчёт (JSON).
-3. `GET /api/chats/{id}/report.pdf` — отчёт в PDF (`?ai=true` — с AI-резюме).
-4. `GET /api/chats/{id}/insights` — AI-выводы (summary, тон, темы, динамика).
-5. `GET /api/chats/{id}/personality` — AI-портреты участников.
-6. `GET /api/chats/{id}/compare` — сравнение периодов («было → стало»).
+- Импорт Telegram с **дозагрузкой** новых сообщений в существующий чат
+- 9 модулей статистической аналитики
+- Сравнение периодов общения («было → стало»)
+- AI-инсайты и AI-портреты участников (локальная модель, кэш в БД)
+- PDF-отчёт с AI-резюме
+- Веб-интерфейс: загрузка, список чатов, отчёт с графиками и AI-блоками
 
 ---
 
@@ -38,11 +59,4 @@ Swagger: `http://localhost:5201/swagger`.
 
 - **[PROJECT_STATUS.md](PROJECT_STATUS.md)** — что сделано и сверка с идеей.
 - **[ROADMAP.md](ROADMAP.md)** — план развития.
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — слои, пути данных, БД, AI.
-
----
-
-## Статус
-
-MVP закрыт, кроме графиков (фронтенд). Сделано: импорт с дозагрузкой → PostgreSQL →
-аналитика → AI-инсайты, AI-портреты, сравнение периодов → PDF с AI. Дальше — фронтенд.
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** — слои, потоки данных, БД, AI, фронт.
