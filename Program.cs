@@ -70,6 +70,7 @@ builder.Services.AddScoped<PdfReportService>();
 // --- AI (Ollama) ---
 builder.Services.AddHttpClient<OllamaClient>();
 builder.Services.AddScoped<AiInsightService>();
+builder.Services.AddScoped<AiInsightCacheService>();
 
 var app = builder.Build();
 

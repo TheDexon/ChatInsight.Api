@@ -9,19 +9,25 @@ namespace ChatInsight.Api.Controllers;
 public class AiController : ControllerBase
 {
     private readonly ChatContextLoader _loader;
-    private readonly AiInsightService _ai;
+    private readonly AiInsightCacheService _cache;
 
     public AiController(
         ChatContextLoader loader,
-        AiInsightService ai)
+        AiInsightCacheService cache)
     {
         _loader = loader;
-        _ai = ai;
+        _cache = cache;
     }
 
-    /// <summary>AI-выводы по сохранённому чату (через локальную модель Ollama).</summary>
+    /// <summary>
+    /// AI-выводы по сохранённому чату. Берёт из кэша (БД); если нет —
+    /// считает через Ollama и сохраняет. refresh=true — пересчитать заново.
+    /// </summary>
     [HttpGet("{id:guid}/insights")]
-    public async Task<IActionResult> Insights(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Insights(
+        Guid id,
+        [FromQuery] bool refresh = false,
+        CancellationToken ct = default)
     {
         var context = await _loader.LoadAsync(id, ct);
         if (context is null)
@@ -32,7 +38,13 @@ public class AiController : ControllerBase
 
         try
         {
-            var insight = await _ai.AnalyzeAsync(context, ct);
+            var (insight, fromCache) =
+                await _cache.GetOrCreateAsync(context, id, refresh, ct);
+
+            // подсказка клиенту, откуда результат
+            Response.Headers["X-Insight-Cache"] =
+                fromCache ? "hit" : "miss";
+
             return Ok(insight);
         }
         catch (OllamaUnavailableException ex)

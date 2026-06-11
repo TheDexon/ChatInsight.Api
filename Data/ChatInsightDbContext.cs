@@ -13,6 +13,7 @@ public class ChatInsightDbContext : DbContext
 
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<ChatInsightRecord> Insights => Set<ChatInsightRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,13 +34,27 @@ public class ChatInsightDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Type).HasMaxLength(64);
             e.Property(x => x.Author).HasMaxLength(256);
-
-            // Telegram-даты без таймзоны — храним как есть
             e.Property(x => x.Date)
                 .HasColumnType("timestamp without time zone");
 
             e.HasIndex(x => x.ChatId);
             e.HasIndex(x => new { x.ChatId, x.Date });
+        });
+
+        modelBuilder.Entity<ChatInsightRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            // один инсайт на чат
+            e.HasIndex(x => x.ChatId).IsUnique();
+
+            e.HasOne(x => x.Chat)
+                .WithOne()
+                .HasForeignKey<ChatInsightRecord>(x => x.ChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Topics / Dynamics (List<string>) Npgsql маппит в text[] нативно
+            e.Property(x => x.Model).HasMaxLength(128);
         });
     }
 }
