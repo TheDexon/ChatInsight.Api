@@ -2,6 +2,7 @@ using ChatInsight.Api.Configuration;
 using ChatInsight.Api.Data;
 using ChatInsight.Api.Parsers;
 using ChatInsight.Api.Reports;
+using ChatInsight.Api.Services.Ai;
 using ChatInsight.Api.Services.Analytics;
 using ChatInsight.Api.Services.Import;
 using ChatInsight.Api.Services.Text;
@@ -16,6 +17,8 @@ QuestPDF.Settings.License = LicenseType.Community;
 // --- Конфигурация ---
 builder.Services.Configure<EmotionAnalysisOptions>(
     builder.Configuration.GetSection(EmotionAnalysisOptions.SectionName));
+builder.Services.Configure<OllamaOptions>(
+    builder.Configuration.GetSection(OllamaOptions.SectionName));
 
 // --- База данных (PostgreSQL) ---
 builder.Services.AddDbContext<ChatInsightDbContext>(options =>
@@ -63,6 +66,10 @@ builder.Services.AddScoped<ReportService>();
 
 // --- Отчёты ---
 builder.Services.AddScoped<PdfReportService>();
+
+// --- AI (Ollama) ---
+builder.Services.AddHttpClient<OllamaClient>();
+builder.Services.AddScoped<AiInsightService>();
 
 var app = builder.Build();
 
