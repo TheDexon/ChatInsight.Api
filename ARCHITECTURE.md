@@ -1,134 +1,122 @@
 # ChatInsight.Api — ARCHITECTURE
 
-Как устроен backend и куда что класть. Статус — в `PROJECT_STATUS.md`,
-план — в `ROADMAP.md`.
+Слои и потоки данных. Статус — `PROJECT_STATUS.md`, план — `ROADMAP.md`.
 
 ---
 
 ## Пути данных
 
-### 1. Импорт (файл → БД)
+### Импорт (файл → БД, с дозагрузкой)
 
 ```text
 POST /api/import/telegram (result.json)
-   → AnalysisControllerBase.ReadExportAsync (валидация)
-   → TelegramParser → TelegramExport
-   → ChatImportService (Text = плоский, RawTextJson = оригинал)
-   → ChatInsightDbContext.SaveChanges → PostgreSQL (Chats, Messages)
-   → ответ: chatId + метаданные
+   → ReadExportAsync (валидация) → TelegramParser → TelegramExport
+   → ChatImportService:
+        • ищет чат по SourceId (telegram id чата)
+        • есть → добавляет только новые сообщения (по TelegramId), сбрасывает кэш AI
+        • нет  → создаёт новый чат
+   → PostgreSQL (Chats, Messages)
+   → ответ: chatId, isNewChat, newMessages
 ```
 
-### 2. Анализ из БД (статистика / PDF)
+### Анализ из БД (статистика / PDF / сравнение)
 
 ```text
-GET /api/chats/{id}/report(.pdf)
-   → ChatContextLoader.LoadAsync(chatId)   (Messages → TelegramExport)
-   → ChatAnalysisContext.Create            (фильтр+сортировка, 1 раз)
-   → ReportService.Analyze(context) → JSON
-   → (PDF) PdfReportService.Build(context) → QuestPDF → файл
+GET /api/chats/{id}/report(.pdf) | /compare
+   → ChatContextLoader.LoadAsync(chatId) (Messages → TelegramExport)
+   → ChatAnalysisContext.Create (фильтр+сортировка, 1 раз)
+   → ReportService / ComparisonService / PdfReportService → JSON | PDF
 ```
 
-### 3. AI-инсайты (БД → Ollama)
+### AI (БД → Ollama → кэш в БД)
 
 ```text
-GET /api/chats/{id}/insights
-   → ChatContextLoader.LoadAsync(chatId)
-   → AiInsightService: выборка сообщений + промпт + JSON Schema
-   → OllamaClient → POST localhost:11434/api/chat (format = schema)
-   → парсинг в AiInsight (summary, emotionalTone, topics[], dynamics[])
-   → Ollama недоступна → OllamaUnavailableException → 503
+GET /api/chats/{id}/insights | /personality
+   → ChatContextLoader → ChatAnalysisContext
+   → *CacheService: есть в БД и не refresh? → отдать мгновенно
+                    иначе → *Service (Ollama, JSON Schema) → сохранить → отдать
+   → Ollama недоступна → 503
 ```
 
-Главный принцип сохранён: сообщения фильтруются/сортируются один раз в
-`ChatAnalysisContext.Create`. Сервисы (аналитика, PDF, AI) не знают, откуда
-данные — всегда работают с `ChatAnalysisContext`.
+Принцип: сообщения фильтруются/сортируются один раз в `ChatAnalysisContext.Create`.
+Все сервисы (аналитика, сравнение, PDF, AI) работают с `ChatAnalysisContext` и не
+знают, откуда данные.
 
 ---
 
 ## Слои и папки
 
-| Папка | Слой | Что лежит |
-|---|---|---|
-| `Models/Telegram/` | Контракт ввода | `TelegramExport`, `TelegramMessage` |
-| `Models/Domain/` | Сущности БД | `Chat`, `Message` (EF Core) |
-| `Parsers/` | Парсинг | `TelegramParser` |
-| `Data/` | Доступ к БД | `ChatInsightDbContext`, `Migrations/` |
-| `Domain/` | Рантайм-контекст | `ChatAnalysisContext` |
-| `Services/Text/` | Утилиты текста | `TelegramTextExtractor`, `TextCleaner` |
-| `Services/Import/` | Импорт | `ChatImportService` |
-| `Services/Analytics/` | Аналитика | `*Service`, `ReportService`, `ChatContextLoader` |
-| `Services/Ai/` | AI | `OllamaClient`, `AiInsightService` |
-| `Reports/` | Экспорт | `PdfReportService` (QuestPDF) |
-| `Analysis/<Модуль>/` | Результаты | `*Statistics`, `AiInsight`, … (DTO ответов) |
-| `Controllers/` | HTTP | модули + `ChatsController`, `AiController`, `ImportController`, `AnalysisControllerBase` |
-| `Configuration/` | Настройки | `EmotionAnalysisOptions`, `OllamaOptions` |
-| `DTOs/` | DTO | `ImportResultDto` |
+| Папка | Что лежит |
+|---|---|
+| `Models/Telegram/` | `TelegramExport` (+`Id` чата), `TelegramMessage` |
+| `Models/Domain/` | сущности БД: `Chat` (+`SourceId`), `Message`, `ChatInsightRecord`, `PersonalityRecord` |
+| `Parsers/` | `TelegramParser` |
+| `Data/` | `ChatInsightDbContext`, `Migrations/` |
+| `Domain/` | `ChatAnalysisContext` (рантайм-контекст анализа) |
+| `Services/Text/` | `TelegramTextExtractor`, `TextCleaner` |
+| `Services/Import/` | `ChatImportService` (upsert + дозагрузка) |
+| `Services/Analytics/` | `*Service`, `ReportService`, `ComparisonService`, `ChatContextLoader` |
+| `Services/Ai/` | `OllamaClient`, `AiInsightService(+Cache)`, `PersonalityService(+Cache)` |
+| `Reports/` | `PdfReportService` (QuestPDF, опц. AI-секция) |
+| `Analysis/<Модуль>/` | DTO результатов (`*Statistics`, `AiInsight`, `PersonalityProfile`, `PeriodComparison`) |
+| `Controllers/` | по модулю + `ChatsController`, `AiController`, `PersonalityController`, `ComparisonController`, `ImportController` |
+| `Configuration/` | `EmotionAnalysisOptions`, `OllamaOptions` |
 
 ---
 
 ## Соглашения по именам
 
 - **`ChatAnalysisContext`** (`Domain/`) — рантайм-контекст анализа, НЕ база.
-- **`ChatInsightDbContext`** (`Data/`) — EF Core `DbContext` (PostgreSQL).
-- EF-сущности (`Chat`, `Message`) — в `Models/Domain/`.
+- **`ChatInsightDbContext`** (`Data/`) — EF Core `DbContext`.
+- EF-сущности — в `Models/Domain/`.
 
 ---
 
 ## Модель БД
 
 ```text
-Chat 1 ───< Many Message    (FK Message.ChatId, ON DELETE CASCADE)
+Chat 1 ─< Many Message            (FK ChatId, cascade)
+Chat 1 ─1 ChatInsightRecord       (uniq ChatId)
+Chat 1 ─< Many PersonalityRecord  (uniq ChatId+Participant)
 
-Chat:    Id(Guid PK), Name, Type, ImportedAt(utc), MessageCount
-Message: Id(long PK), ChatId(FK), TelegramId, Type, Date(timestamp без tz),
-         Author?, Text, RawTextJson?
-Индексы: Message(ChatId), Message(ChatId, Date)
+Chat:    Id(Guid), SourceId(long, telegram id), Name, Type, ImportedAt, UpdatedAt?, MessageCount
+Message: Id(long), ChatId, TelegramId, Type, Date(ts без tz), Author?, Text, RawTextJson?
+Insights:       ChatId, Summary, EmotionalTone, Topics[], Dynamics[], Model, GeneratedAt
+Personalities:  ChatId, Participant, Summary, CommunicationStyle, Traits[], Model, GeneratedAt
 ```
 
-`Date` = `timestamp without time zone`: Telegram отдаёт время без таймзоны,
-храним «как в файле», без сдвигов. Хранятся и `Text` (для анализа), и
-`RawTextJson` (оригинал — под ссылки/форматирование/переобработку AI).
+`SourceId` — распознать «тот же» чат при повторном импорте. `List<string>` (Topics,
+Dynamics, Traits) → нативный `text[]` Postgres (Npgsql, без конвертеров).
 
 ---
 
-## AI-слой (детали)
+## Кэш AI
 
-- **Конфиг** `OllamaOptions` (секция `Ollama`): `BaseUrl`, `Model`, `TimeoutSeconds`,
-  `SampleMessages`. Модель меняется без пересборки.
-- **`OllamaClient`** — через `IHttpClientFactory`, увеличенный таймаут (LLM медленный).
-  Если передан `schema` — кладётся в `format`, движок гарантирует структуру ответа.
-- **`AiInsightService`** — строит JSON Schema (`required` все поля), выборку сообщений,
-  промпт; парсит ответ в `AiInsight`. На не-JSON — грейсфул-фолбэк в `summary`.
-- **Выбор модели**: `llama3.1:8b` (русский, без морализаторства, стабильный язык).
-  `qwen2.5:14b` в structured-режиме сваливалась в китайский — задокументировано как
-  непригодная для этой задачи.
+`AiInsightCacheService` и `PersonalityCacheService` — единый паттерн: при запросе
+смотрим БД, есть → отдаём (заголовок `X-Insight-Cache: hit`), нет → считаем моделью
+и сохраняем (`miss`). `?refresh=true` — пересчёт. Дозагрузка новых сообщений в чат
+сбрасывает кэш инсайтов.
 
 ---
 
 ## Как добавить аналитический модуль
 
-1. Результат → `Analysis/<Модуль>/<Имя>Statistics.cs`.
-2. Сервис → `Services/Analytics/<Имя>Service.cs`, `Analyze(ChatAnalysisContext)`.
-3. DI в `Program.cs`.
-4. Эндпоинт: по файлу — `AnalysisControllerBase`; по БД — `ChatContextLoader`.
-5. (Опц.) добавить в `ReportService` / в PDF.
+1. DTO → `Analysis/<Модуль>/`. 2. Сервис → `Analyze(ChatAnalysisContext)`.
+3. DI в `Program.cs`. 4. Эндпоинт: файл → `AnalysisControllerBase`; БД → `ChatContextLoader`.
+5. (Опц.) в `ReportService` / PDF.
 
 ---
 
 ## Точки расширения
 
-- **Кэш AI:** таблица `AiInsight` (FK на `Chat`), считать один раз, отдавать из БД.
-- **Async AI:** очередь/`BackgroundService`, статус задачи.
-- **AI в PDF:** `PdfReportService` принимает `AiInsight` и рисует секцию.
-- **pgvector:** включить расширение, векторное поле в `Message`, Npgsql.Pgvector.
-- **Новые источники:** парсер Discord/WhatsApp/VK → та же модель `Message` → конвейер.
+- **Async AI:** `BackgroundService`/очередь, статус задачи.
+- **AI-портреты в PDF:** `PdfReportService` принимает `List<PersonalityProfile>`.
+- **pgvector:** расширение Postgres, векторное поле в `Message`, Npgsql.Pgvector.
+- **Новые источники:** парсер Discord/WhatsApp/VK → та же модель `Message`.
 
 ---
 
 ## Конфигурация
 
-- `ConnectionStrings:Postgres` — БД (локально из `docker-compose.yml`; прод — env).
-- `Ollama` — адрес/модель/таймаут/размер выборки.
-- `EmotionAnalysis` — словари эмоций (`IOptions`).
-- CORS-политика `frontend` — в `Program.cs`.
-- Стек EF: Npgsql + EF Core Design, мажор = таргету (`9.x` под `net9.0`).
+`ConnectionStrings:Postgres` · `Ollama` (адрес/модель/таймаут/выборка) ·
+`EmotionAnalysis` (словари) · CORS `frontend`. EF: Npgsql + Design, мажор = `net9.0`.

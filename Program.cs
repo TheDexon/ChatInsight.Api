@@ -11,7 +11,6 @@ using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// QuestPDF — бесплатная Community-лицензия
 QuestPDF.Settings.License = LicenseType.Community;
 
 // --- Конфигурация ---
@@ -30,14 +29,14 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// --- CORS (под будущий React-фронт) ---
+// --- CORS ---
 const string FrontendCors = "frontend";
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCors, policy =>
         policy.WithOrigins(
-                "http://localhost:5173",  // Vite
-                "http://localhost:3000")  // CRA / Next
+                "http://localhost:5173",
+                "http://localhost:3000")
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
@@ -63,6 +62,7 @@ builder.Services.AddScoped<InitiativeService>();
 builder.Services.AddScoped<TimelineService>();
 builder.Services.AddScoped<RelationshipService>();
 builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<ComparisonService>();
 
 // --- Отчёты ---
 builder.Services.AddScoped<PdfReportService>();
@@ -71,6 +71,8 @@ builder.Services.AddScoped<PdfReportService>();
 builder.Services.AddHttpClient<OllamaClient>();
 builder.Services.AddScoped<AiInsightService>();
 builder.Services.AddScoped<AiInsightCacheService>();
+builder.Services.AddScoped<PersonalityService>();
+builder.Services.AddScoped<PersonalityCacheService>();
 
 var app = builder.Build();
 

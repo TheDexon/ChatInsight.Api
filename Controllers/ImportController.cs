@@ -1,4 +1,3 @@
-using ChatInsight.Api.DTOs;
 using ChatInsight.Api.Parsers;
 using ChatInsight.Api.Services.Import;
 using Microsoft.AspNetCore.Mvc;
@@ -20,36 +19,14 @@ public class ImportController : AnalysisControllerBase
     }
 
     [HttpPost("telegram")]
-    public async Task<IActionResult> ImportTelegram(IFormFile file)
+    public async Task<IActionResult> ImportTelegram(
+        IFormFile file,
+        CancellationToken ct = default)
     {
         var (export, error) = await ReadExportAsync(file);
         if (error is not null) return error;
 
-        var chat = await _import.ImportAsync(export!);
-
-        var validated = export!;
-
-        var participants = validated.Messages
-            .Where(m => !string.IsNullOrWhiteSpace(m.From))
-            .Select(m => m.From!)
-            .Distinct()
-            .ToList();
-
-        var dates = validated.Messages
-            .Select(m => m.Date)
-            .OrderBy(d => d)
-            .ToList();
-
-        var result = new ImportResultDto
-        {
-            ChatId = chat.Id,
-            ChatName = validated.Name,
-            ChatType = validated.Type,
-            MessagesCount = validated.Messages.Count,
-            FirstMessageDate = dates.FirstOrDefault(),
-            LastMessageDate = dates.LastOrDefault(),
-            Participants = participants
-        };
+        var result = await _import.ImportAsync(export!, ct);
 
         return Ok(result);
     }

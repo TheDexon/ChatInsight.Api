@@ -14,6 +14,7 @@ public class ChatInsightDbContext : DbContext
     public DbSet<Chat> Chats => Set<Chat>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<ChatInsightRecord> Insights => Set<ChatInsightRecord>();
+    public DbSet<PersonalityRecord> Personalities => Set<PersonalityRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -22,6 +23,7 @@ public class ChatInsightDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(512);
             e.Property(x => x.Type).HasMaxLength(64);
+            e.HasIndex(x => x.SourceId);
 
             e.HasMany(x => x.Messages)
                 .WithOne(x => x.Chat)
@@ -44,8 +46,6 @@ public class ChatInsightDbContext : DbContext
         modelBuilder.Entity<ChatInsightRecord>(e =>
         {
             e.HasKey(x => x.Id);
-
-            // один инсайт на чат
             e.HasIndex(x => x.ChatId).IsUnique();
 
             e.HasOne(x => x.Chat)
@@ -53,7 +53,21 @@ public class ChatInsightDbContext : DbContext
                 .HasForeignKey<ChatInsightRecord>(x => x.ChatId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Topics / Dynamics (List<string>) Npgsql маппит в text[] нативно
+            e.Property(x => x.Model).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<PersonalityRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // один портрет на (чат, участник)
+            e.HasIndex(x => new { x.ChatId, x.Participant }).IsUnique();
+
+            e.HasOne(x => x.Chat)
+                .WithMany()
+                .HasForeignKey(x => x.ChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(x => x.Participant).HasMaxLength(256);
             e.Property(x => x.Model).HasMaxLength(128);
         });
     }
