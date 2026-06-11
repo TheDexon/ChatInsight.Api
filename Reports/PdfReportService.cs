@@ -1,3 +1,4 @@
+using ChatInsight.Api.Analysis.Ai;
 using ChatInsight.Api.Analysis.Emotion;
 using ChatInsight.Api.Analysis.Statistics;
 using ChatInsight.Api.Analysis.Text;
@@ -11,8 +12,8 @@ using QuestPDF.Infrastructure;
 namespace ChatInsight.Api.Reports;
 
 /// <summary>
-/// Рендерит аналитику чата в PDF. Берёт уже собранные модели
-/// (статистика, текст, эмоции, таймлайн) и раскладывает их по секциям.
+/// Рендерит аналитику чата в PDF. Если передан AiInsight — добавляет
+/// секцию AI-анализа в начало отчёта.
 /// </summary>
 public class PdfReportService
 {
@@ -33,7 +34,7 @@ public class PdfReportService
         _timeline = timeline;
     }
 
-    public byte[] Build(ChatAnalysisContext context)
+    public byte[] Build(ChatAnalysisContext context, AiInsight? insight = null)
     {
         var stats = _statistics.Analyze(context);
         var text = _text.Analyze(context);
@@ -54,7 +55,7 @@ public class PdfReportService
 
                 page.Header().Element(c => Header(c, title, context));
                 page.Content().Element(c =>
-                    Content(c, stats, text, emotion, timeline));
+                    Content(c, stats, text, emotion, timeline, insight));
                 page.Footer().AlignCenter().Text(t =>
                 {
                     t.Span("ChatInsight • ");
@@ -91,11 +92,16 @@ public class PdfReportService
         ChatStatistics stats,
         TextStatistics text,
         EmotionStatistics emotion,
-        List<TimelineEvent> timeline)
+        List<TimelineEvent> timeline,
+        AiInsight? insight)
     {
         container.PaddingVertical(12).Column(col =>
         {
             col.Spacing(16);
+
+            // --- AI-анализ (если есть) ---
+            if (insight is not null && !string.IsNullOrWhiteSpace(insight.Summary))
+                AiSection(col, insight);
 
             // --- Активность ---
             Section(col, "Активность");
@@ -136,6 +142,46 @@ public class PdfReportService
                 foreach (var e in timeline)
                     col.Item().Text(
                         $"  • {e.Date:dd.MM.yyyy} — {e.Title}: {e.Description}");
+        });
+    }
+
+    private static void AiSection(ColumnDescriptor col, AiInsight insight)
+    {
+        col.Item().Background(Colors.Blue.Lighten5).Padding(12).Column(box =>
+        {
+            box.Spacing(8);
+
+            box.Item().Text("AI-анализ")
+                .FontSize(15).Bold().FontColor(Colors.Blue.Darken2);
+
+            if (!string.IsNullOrWhiteSpace(insight.Summary))
+            {
+                box.Item().Text("Резюме").SemiBold();
+                box.Item().Text(insight.Summary);
+            }
+
+            if (!string.IsNullOrWhiteSpace(insight.EmotionalTone))
+            {
+                box.Item().Text("Эмоциональный фон").SemiBold();
+                box.Item().Text(insight.EmotionalTone);
+            }
+
+            if (insight.Topics.Count > 0)
+            {
+                box.Item().Text("Темы").SemiBold();
+                box.Item().Text(string.Join(",  ", insight.Topics));
+            }
+
+            if (insight.Dynamics.Count > 0)
+            {
+                box.Item().Text("Динамика общения").SemiBold();
+                foreach (var d in insight.Dynamics)
+                    box.Item().Text($"  • {d}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(insight.Model))
+                box.Item().Text($"модель: {insight.Model}")
+                    .FontSize(8).FontColor(Colors.Grey.Darken1);
         });
     }
 

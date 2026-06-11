@@ -23,6 +23,18 @@ public class AiInsightCacheService
         _ai = ai;
     }
 
+    /// <summary>Только чтение из кэша. null — если ещё не считали (модель НЕ зовётся).</summary>
+    public async Task<AiInsight?> GetCachedAsync(
+        Guid chatId,
+        CancellationToken ct = default)
+    {
+        var existing = await _db.Insights
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ChatId == chatId, ct);
+
+        return existing is null ? null : ToDto(existing);
+    }
+
     /// <returns>(insight, fromCache)</returns>
     public async Task<(AiInsight Insight, bool FromCache)> GetOrCreateAsync(
         ChatAnalysisContext context,
@@ -37,7 +49,6 @@ public class AiInsightCacheService
         if (existing is not null && !refresh)
             return (ToDto(existing), true);
 
-        // считаем через модель
         var generated = await _ai.AnalyzeAsync(context, ct);
 
         if (existing is null)
@@ -56,7 +67,6 @@ public class AiInsightCacheService
         }
         else
         {
-            // пересчёт — обновляем существующую запись
             var tracked = await _db.Insights
                 .FirstAsync(x => x.Id == existing.Id, ct);
 

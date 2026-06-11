@@ -1,5 +1,7 @@
+using ChatInsight.Api.Analysis.Ai;
 using ChatInsight.Api.Data;
 using ChatInsight.Api.Reports;
+using ChatInsight.Api.Services.Ai;
 using ChatInsight.Api.Services.Analytics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,17 +16,20 @@ public class ChatsController : ControllerBase
     private readonly ChatContextLoader _loader;
     private readonly ReportService _report;
     private readonly PdfReportService _pdf;
+    private readonly AiInsightCacheService _aiCache;
 
     public ChatsController(
         ChatInsightDbContext db,
         ChatContextLoader loader,
         ReportService report,
-        PdfReportService pdf)
+        PdfReportService pdf,
+        AiInsightCacheService aiCache)
     {
         _db = db;
         _loader = loader;
         _report = report;
         _pdf = pdf;
+        _aiCache = aiCache;
     }
 
     /// <summary>Список сохранённых чатов.</summary>
@@ -78,15 +83,41 @@ public class ChatsController : ControllerBase
         return Ok(_report.Analyze(context));
     }
 
-    /// <summary>Отчёт в PDF из БД по сохранённому чату.</summary>
+    /// <summary>
+    /// Отчёт в PDF. По умолчанию AI-секция добавляется, только если инсайт уже
+    /// в кэше (быстро). ai=true — посчитать инсайт при необходимости (дольше).
+    /// </summary>
     [HttpGet("{id:guid}/report.pdf")]
-    public async Task<IActionResult> ReportPdf(Guid id)
+    public async Task<IActionResult> ReportPdf(
+        Guid id,
+        [FromQuery] bool ai = false,
+        CancellationToken ct = default)
     {
-        var context = await _loader.LoadAsync(id);
+        var context = await _loader.LoadAsync(id, ct);
         if (context is null)
             return NotFound("Чат не найден.");
 
-        var bytes = _pdf.Build(context);
+        AiInsight? insight;
+        if (ai)
+        {
+            // гарантированно с AI; если Ollama недоступна — PDF без AI, не падаем
+            try
+            {
+                (insight, _) = await _aiCache.GetOrCreateAsync(
+                    context, id, refresh: false, ct);
+            }
+            catch (OllamaUnavailableException)
+            {
+                insight = null;
+            }
+        }
+        else
+        {
+            // только если уже посчитано раньше — модель не зовём
+            insight = await _aiCache.GetCachedAsync(id, ct);
+        }
+
+        var bytes = _pdf.Build(context, insight);
 
         var safeName = string.IsNullOrWhiteSpace(context.Export.Name)
             ? "chat"
