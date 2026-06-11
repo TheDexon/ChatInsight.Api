@@ -1,12 +1,17 @@
 using ChatInsight.Api.Configuration;
 using ChatInsight.Api.Data;
 using ChatInsight.Api.Parsers;
+using ChatInsight.Api.Reports;
 using ChatInsight.Api.Services.Analytics;
 using ChatInsight.Api.Services.Import;
 using ChatInsight.Api.Services.Text;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// QuestPDF — бесплатная Community-лицензия
+QuestPDF.Settings.License = LicenseType.Community;
 
 // --- Конфигурация ---
 builder.Services.Configure<EmotionAnalysisOptions>(
@@ -55,6 +60,9 @@ builder.Services.AddScoped<InitiativeService>();
 builder.Services.AddScoped<TimelineService>();
 builder.Services.AddScoped<RelationshipService>();
 builder.Services.AddScoped<ReportService>();
+
+// --- Отчёты ---
+builder.Services.AddScoped<PdfReportService>();
 
 var app = builder.Build();
 
