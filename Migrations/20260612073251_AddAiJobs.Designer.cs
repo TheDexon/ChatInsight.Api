@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using ChatInsight.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ChatInsight.Api.Migrations
 {
     [DbContext(typeof(ChatInsightDbContext))]
-    partial class ChatInsightDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612073251_AddAiJobs")]
+    partial class AddAiJobs
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -137,39 +140,6 @@ namespace ChatInsight.Api.Migrations
                     b.ToTable("Insights");
                 });
 
-            modelBuilder.Entity("ChatInsight.Api.Models.Domain.LifeTimelineRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ChatId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("EventsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("GeneratedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Model")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("Summary")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChatId")
-                        .IsUnique();
-
-                    b.ToTable("LifeTimelines");
-                });
-
             modelBuilder.Entity("ChatInsight.Api.Models.Domain.Message", b =>
                 {
                     b.Property<long>("Id")
@@ -268,17 +238,6 @@ namespace ChatInsight.Api.Migrations
                     b.HasOne("ChatInsight.Api.Models.Domain.Chat", "Chat")
                         .WithOne()
                         .HasForeignKey("ChatInsight.Api.Models.Domain.ChatInsightRecord", "ChatId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Chat");
-                });
-
-            modelBuilder.Entity("ChatInsight.Api.Models.Domain.LifeTimelineRecord", b =>
-                {
-                    b.HasOne("ChatInsight.Api.Models.Domain.Chat", "Chat")
-                        .WithOne()
-                        .HasForeignKey("ChatInsight.Api.Models.Domain.LifeTimelineRecord", "ChatId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

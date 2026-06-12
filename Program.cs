@@ -13,46 +13,33 @@ var builder = WebApplication.CreateBuilder(args);
 
 QuestPDF.Settings.License = LicenseType.Community;
 
-// --- Конфигурация ---
 builder.Services.Configure<EmotionAnalysisOptions>(
     builder.Configuration.GetSection(EmotionAnalysisOptions.SectionName));
 builder.Services.Configure<OllamaOptions>(
     builder.Configuration.GetSection(OllamaOptions.SectionName));
 
-// --- База данных (PostgreSQL) ---
 builder.Services.AddDbContext<ChatInsightDbContext>(options =>
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("Postgres")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
 
-// --- MVC / Swagger ---
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// --- CORS ---
 const string FrontendCors = "frontend";
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCors, policy =>
-        policy.WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:3000")
-            .AllowAnyHeader()
-            .AllowAnyMethod());
+        policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
+            .AllowAnyHeader().AllowAnyMethod());
 });
 
-// --- Парсер ---
 builder.Services.AddScoped<TelegramParser>();
-
-// --- Текстовые сервисы ---
 builder.Services.AddScoped<TelegramTextExtractor>();
 builder.Services.AddScoped<TextCleaner>();
 
-// --- Импорт / загрузка из БД ---
 builder.Services.AddScoped<ChatImportService>();
 builder.Services.AddScoped<ChatContextLoader>();
 
-// --- Аналитика ---
 builder.Services.AddScoped<StatisticsService>();
 builder.Services.AddScoped<TextAnalyticsService>();
 builder.Services.AddScoped<TopicService>();
@@ -64,15 +51,19 @@ builder.Services.AddScoped<RelationshipService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<ComparisonService>();
 
-// --- Отчёты ---
 builder.Services.AddScoped<PdfReportService>();
 
-// --- AI (Ollama) ---
 builder.Services.AddHttpClient<OllamaClient>();
 builder.Services.AddScoped<AiInsightService>();
 builder.Services.AddScoped<AiInsightCacheService>();
 builder.Services.AddScoped<PersonalityService>();
 builder.Services.AddScoped<PersonalityCacheService>();
+builder.Services.AddScoped<LifeTimelineService>();
+builder.Services.AddScoped<LifeTimelineCacheService>();
+
+builder.Services.AddSingleton<AiJobQueue>();
+builder.Services.AddScoped<AiJobService>();
+builder.Services.AddHostedService<AiJobWorker>();
 
 var app = builder.Build();
 
@@ -86,6 +77,7 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
 app.UseCors(FrontendCors);
 app.UseAuthorization();
 app.MapControllers();

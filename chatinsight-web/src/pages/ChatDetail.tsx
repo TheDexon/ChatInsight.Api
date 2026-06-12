@@ -1,12 +1,20 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  getReport, getInsights, getPersonality, getComparison, reportPdfUrl,
+  getReport, getComparison, reportPdfUrl,
+  getInsightsAsync, getPersonalityAsync, getLifeTimelineAsync,
 } from "../api";
 import type {
   Report, AiInsight, PersonalityProfile, PeriodComparison, Relationship,
+  LifeTimelineResult,
 } from "../types";
 import { HourChart, AuthorChart, DayChart } from "../components/Charts";
+
+function statusLabel(s: string): string {
+  if (s === "pending") return "В очереди…";
+  if (s === "running") return "Модель думает…";
+  return "Считаю…";
+}
 
 export default function ChatDetail() {
   const { id = "" } = useParams();
@@ -47,32 +55,20 @@ export default function ChatDetail() {
         <RelationshipBlock rel={report.relationship} />
       )}
 
-      <Block title="Активность по дням">
-        <DayChart byDay={s.messagesByDay} />
-      </Block>
-
-      <Block title="Эмоциональный фон">
-        <EmotionBars e={e} total={s.totalMessages} />
-      </Block>
-
-      <Block title="Активность по часам">
-        <HourChart byHour={s.messagesByHour} />
-      </Block>
-
-      <Block title="Сообщений по авторам">
-        <AuthorChart byAuthor={s.messagesByAuthor} />
-      </Block>
+      <Block title="Активность по дням"><DayChart byDay={s.messagesByDay} /></Block>
+      <Block title="Эмоциональный фон"><EmotionBars e={e} total={s.totalMessages} /></Block>
+      <Block title="Активность по часам"><HourChart byHour={s.messagesByHour} /></Block>
+      <Block title="Сообщений по авторам"><AuthorChart byAuthor={s.messagesByAuthor} /></Block>
 
       <AiInsightBlock id={id} />
       <PersonalityBlock id={id} />
+      <LifeTimelineBlock id={id} />
       <CompareBlock id={id} />
     </div>
   );
 }
 
-function EmotionBars({ e, total }: {
-  e: Report["emotion"]; total: number;
-}) {
+function EmotionBars({ e, total }: { e: Report["emotion"]; total: number }) {
   const rows = [
     { label: "Позитивные", value: e.positiveMessages, color: "bg-sage" },
     { label: "Негативные", value: e.negativeMessages, color: "bg-ember" },
@@ -86,7 +82,7 @@ function EmotionBars({ e, total }: {
           <div className="flex justify-between text-xs mb-1">
             <span>{r.label}</span>
             <span className="font-mono text-muted">
-              {r.value} {total > 0 && `· ${Math.round((r.value / total) * 100)}%`}
+              {r.value}{total > 0 && ` · ${Math.round((r.value / total) * 100)}%`}
             </span>
           </div>
           <div className="h-2 rounded-full bg-line overflow-hidden">
@@ -151,15 +147,32 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+function AiButton({ busy, status, onClick, label = "Запустить" }: {
+  busy: boolean; status: string; onClick: () => void; label?: string;
+}) {
+  return (
+    <button onClick={onClick} disabled={busy}
+      className="text-sm border border-line rounded-md px-3 py-1.5 hover:border-accent transition-colors disabled:opacity-70">
+      {busy ? (
+        <span className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+          {status}
+        </span>
+      ) : label}
+    </button>
+  );
+}
+
 function AiInsightBlock({ id }: { id: string }) {
   const [data, setData] = useState<AiInsight | null>(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
     setBusy(true); setErr(null);
-    try { setData(await getInsights(id)); }
-    catch { setErr("Не удалось получить AI-анализ. Запущена ли Ollama?"); }
+    try { setData(await getInsightsAsync(id, (s) => setStatus(statusLabel(s)))); }
+    catch (e: any) { setErr(e?.message || "Не удалось получить AI-анализ. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
 
@@ -167,12 +180,7 @@ function AiInsightBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">AI-анализ</h2>
-        {!data && (
-          <button onClick={run} disabled={busy}
-            className="text-sm border border-line rounded-md px-3 py-1.5 hover:border-accent transition-colors">
-            {busy ? "Модель думает…" : "Запустить"}
-          </button>
-        )}
+        {!data && <AiButton busy={busy} status={status} onClick={run} />}
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -201,12 +209,13 @@ function AiInsightBlock({ id }: { id: string }) {
 function PersonalityBlock({ id }: { id: string }) {
   const [data, setData] = useState<PersonalityProfile[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
   async function run() {
     setBusy(true); setErr(null);
-    try { setData(await getPersonality(id)); }
-    catch { setErr("Не удалось построить портреты. Запущена ли Ollama?"); }
+    try { setData(await getPersonalityAsync(id, (s) => setStatus(statusLabel(s)))); }
+    catch (e: any) { setErr(e?.message || "Не удалось построить портреты. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
 
@@ -214,12 +223,7 @@ function PersonalityBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">Портреты участников</h2>
-        {!data && (
-          <button onClick={run} disabled={busy}
-            className="text-sm border border-line rounded-md px-3 py-1.5 hover:border-accent transition-colors">
-            {busy ? "Модель думает…" : "Запустить"}
-          </button>
-        )}
+        {!data && <AiButton busy={busy} status={status} onClick={run} />}
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -236,6 +240,53 @@ function PersonalityBlock({ id }: { id: string }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LifeTimelineBlock({ id }: { id: string }) {
+  const [data, setData] = useState<LifeTimelineResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true); setErr(null);
+    try { setData(await getLifeTimelineAsync(id, (s) => setStatus(statusLabel(s)))); }
+    catch (e: any) { setErr(e?.message || "Не удалось построить хронологию. Запущена ли Ollama?"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xl">Хронология жизни</h2>
+        {!data && <AiButton busy={busy} status={status} onClick={run} label="Построить" />}
+      </div>
+      {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
+      {data && (
+        <div className="rounded-xl border border-line bg-card p-5">
+          {data.summary && <p className="text-sm mb-6">{data.summary}</p>}
+          {data.events.length === 0 ? (
+            <p className="text-sm text-muted">Событий не выделено.</p>
+          ) : (
+            <ol className="relative border-l-2 border-line ml-2 space-y-6">
+              {data.events.map((ev, i) => (
+                <li key={i} className="ml-5">
+                  <span className="absolute -left-[7px] w-3 h-3 rounded-full bg-accent border-2 border-paper" />
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-mono text-xs bg-accent-soft text-accent rounded px-2 py-0.5">{ev.period}</span>
+                    <span className="font-display text-base">{ev.title}</span>
+                    {ev.category && <span className="font-mono text-[10px] text-muted uppercase tracking-wide">{ev.category}</span>}
+                  </div>
+                  <p className="text-sm text-muted mt-1">{ev.description}</p>
+                </li>
+              ))}
+            </ol>
+          )}
+          {data.model && <div className="font-mono text-[11px] text-muted mt-5">{data.model}</div>}
         </div>
       )}
     </section>

@@ -1,11 +1,10 @@
 import axios from "axios";
 import type {
   ChatListItem, ImportResult, Report,
-  AiInsight, PersonalityProfile, PeriodComparison,
+  AiInsight, PersonalityProfile, PeriodComparison, Job, LifeTimelineResult,
 } from "./types";
 
 export const BASE_URL = "http://localhost:5201";
-
 const api = axios.create({ baseURL: BASE_URL });
 
 export async function importTelegram(file: File): Promise<ImportResult> {
@@ -25,16 +24,6 @@ export async function getReport(id: string): Promise<Report> {
   return data;
 }
 
-export async function getInsights(id: string, refresh = false): Promise<AiInsight> {
-  const { data } = await api.get(`/api/chats/${id}/insights`, { params: { refresh } });
-  return data;
-}
-
-export async function getPersonality(id: string, refresh = false): Promise<PersonalityProfile[]> {
-  const { data } = await api.get(`/api/chats/${id}/personality`, { params: { refresh } });
-  return data;
-}
-
 export async function getComparison(id: string): Promise<PeriodComparison> {
   const { data } = await api.get(`/api/chats/${id}/compare`);
   return data;
@@ -42,4 +31,43 @@ export async function getComparison(id: string): Promise<PeriodComparison> {
 
 export function reportPdfUrl(id: string, ai = false): string {
   return `${BASE_URL}/api/chats/${id}/report.pdf${ai ? "?ai=true" : ""}`;
+}
+
+// --- Асинхронный AI ---
+
+export async function getJob<T>(jobId: string): Promise<Job<T>> {
+  const { data } = await api.get(`/api/jobs/${jobId}`);
+  return data;
+}
+
+export async function pollJob<T>(
+  jobId: string,
+  onTick?: (status: string) => void,
+  intervalMs = 2000,
+): Promise<T> {
+  for (let i = 0; i < 150; i++) {
+    const job = await getJob<T>(jobId);
+    onTick?.(job.status);
+    if (job.status === "done") return job.result as T;
+    if (job.status === "failed") throw new Error(job.error || "Задача завершилась ошибкой.");
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error("Превышено время ожидания задачи.");
+}
+
+async function startJob(id: string, kind: string): Promise<string> {
+  const { data } = await api.post(`/api/chats/${id}/${kind}/async`);
+  return data.jobId;
+}
+
+export async function getInsightsAsync(id: string, onTick?: (s: string) => void): Promise<AiInsight> {
+  return pollJob<AiInsight>(await startJob(id, "insights"), onTick);
+}
+
+export async function getPersonalityAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityProfile[]> {
+  return pollJob<PersonalityProfile[]>(await startJob(id, "personality"), onTick);
+}
+
+export async function getLifeTimelineAsync(id: string, onTick?: (s: string) => void): Promise<LifeTimelineResult> {
+  return pollJob<LifeTimelineResult>(await startJob(id, "lifetimeline"), onTick);
 }
