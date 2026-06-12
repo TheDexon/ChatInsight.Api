@@ -3,10 +3,11 @@ import { useParams } from "react-router-dom";
 import {
   getReport, getComparison, reportPdfUrl,
   getInsightsAsync, getPersonalityAsync, getLifeTimelineAsync, getEvolutionAsync,
+  buildEmbeddingsAsync, semanticSearch, getClustersAsync,
 } from "../api";
 import type {
   Report, AiInsight, PersonalityProfile, PeriodComparison, Relationship,
-  LifeTimelineResult, PersonalityEvolutionResult,
+  LifeTimelineResult, PersonalityEvolutionResult, SearchHit, TopicClusterResult,
 } from "../types";
 import { HourChart, AuthorChart, DayChart } from "../components/Charts";
 
@@ -64,6 +65,8 @@ export default function ChatDetail() {
       <PersonalityBlock id={id} />
       <LifeTimelineBlock id={id} />
       <EvolutionBlock id={id} />
+      <SemanticSearchBlock id={id} />
+      <ClustersBlock id={id} />
       <CompareBlock id={id} />
     </div>
   );
@@ -359,6 +362,148 @@ function PortraitMini({ label, p, accent }: {
         ))}
       </div>
     </div>
+  );
+}
+
+function SemanticSearchBlock({ id }: { id: string }) {
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [buildStatus, setBuildStatus] = useState("Считаю…");
+  const [needBuild, setNeedBuild] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function search() {
+    if (!query.trim()) return;
+    setSearching(true); setErr(null); setNeedBuild(false);
+    try {
+      const res = await semanticSearch(id, query.trim());
+      if (!res.embeddingsReady) { setNeedBuild(true); setHits(null); }
+      else setHits(res.hits);
+    } catch { setErr("Ошибка поиска. Запущена ли Ollama с embed-моделью?"); }
+    finally { setSearching(false); }
+  }
+
+  async function build() {
+    setBuilding(true); setErr(null);
+    try {
+      await buildEmbeddingsAsync(id, (s) => setBuildStatus(statusLabel(s)));
+      setNeedBuild(false);
+      await search();
+    } catch (e: any) { setErr(e?.message || "Не удалось построить индекс."); }
+    finally { setBuilding(false); }
+  }
+
+  return (
+    <section>
+      <h2 className="font-display text-xl mb-4">Смысловой поиск</h2>
+      <div className="rounded-xl border border-line bg-card p-5 space-y-4">
+        <div className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && search()}
+            placeholder="например: где обсуждали отпуск"
+            className="flex-1 border border-line rounded-md px-3 py-2 text-sm bg-paper focus:outline-none focus:border-accent"
+          />
+          <button onClick={search} disabled={searching || !query.trim()}
+            className="bg-ink text-paper px-4 py-2 rounded-md text-sm hover:bg-accent transition-colors disabled:opacity-60">
+            {searching ? "Ищу…" : "Найти"}
+          </button>
+        </div>
+
+        {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
+
+        {needBuild && (
+          <div className="rounded-lg bg-accent-soft/60 px-4 py-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+            <span>Для этого чата ещё не построен семантический индекс.</span>
+            <button onClick={build} disabled={building}
+              className="text-sm border border-line rounded-md px-3 py-1.5 hover:border-accent transition-colors bg-card">
+              {building ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                  {buildStatus}
+                </span>
+              ) : "Построить индекс"}
+            </button>
+          </div>
+        )}
+
+        {hits && hits.length === 0 && (
+          <p className="text-sm text-muted">Ничего похожего не нашлось.</p>
+        )}
+
+        {hits && hits.length > 0 && (
+          <div className="space-y-2">
+            {hits.map((h, i) => (
+              <div key={i} className="border border-line rounded-lg p-3">
+                <div className="flex justify-between text-xs text-muted mb-1">
+                  <span className="font-medium text-ink">{h.author || "—"}</span>
+                  <span className="font-mono">
+                    {new Date(h.date).toLocaleDateString("ru-RU")} · {Math.round(h.score * 100)}%
+                  </span>
+                </div>
+                <p className="text-sm">{h.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ClustersBlock({ id }: { id: string }) {
+  const [data, setData] = useState<TopicClusterResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true); setErr(null);
+    try { setData(await getClustersAsync(id, (s) => setStatus(statusLabel(s)))); }
+    catch (e: any) { setErr(e?.message || "Не удалось построить темы. Запущена ли Ollama?"); }
+    finally { setBusy(false); }
+  }
+
+  const palette = ["bg-accent", "bg-sage", "bg-ember", "bg-accent/70", "bg-sage/70", "bg-ember/70", "bg-accent/50", "bg-sage/50"];
+  const maxShare = data ? Math.max(1, ...data.clusters.map((c) => c.share)) : 1;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xl">Темы по смыслу</h2>
+        {!data && <AiButton busy={busy} status={status} onClick={run} label="Разбить на темы" />}
+      </div>
+      {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
+      {data && (
+        <div className="rounded-xl border border-line bg-card p-5 space-y-4">
+          {data.summary && <p className="text-sm">{data.summary}</p>}
+          {data.clusters.length === 0 ? (
+            <p className="text-sm text-muted">Тем не выделено.</p>
+          ) : (
+            <div className="space-y-3">
+              {data.clusters.map((c, i) => (
+                <div key={i}>
+                  <div className="flex justify-between items-baseline text-sm mb-1">
+                    <span className="font-display">{c.label}</span>
+                    <span className="font-mono text-xs text-muted">{c.share}% · {c.size}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-line overflow-hidden mb-1.5">
+                    <div className={`h-full ${palette[i % palette.length]}`} style={{ width: `${(c.share / maxShare) * 100}%` }} />
+                  </div>
+                  {c.samples.length > 0 && (
+                    <p className="text-xs text-muted truncate">«{c.samples[0]}»</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {data.model && <div className="font-mono text-[11px] text-muted">{data.model}</div>}
+        </div>
+      )}
+    </section>
   );
 }
 

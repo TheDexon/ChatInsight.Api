@@ -61,6 +61,18 @@ export interface PersonalityEvolutionResult {
   summary: string;
   model: string;
 }
+export interface SearchHit {
+  date: string; author: string | null; text: string; score: number;
+}
+export interface SearchResponse {
+  embeddingsReady: boolean; hits: SearchHit[];
+}
+export interface TopicCluster {
+  label: string; size: number; share: number; samples: string[];
+}
+export interface TopicClusterResult {
+  clusters: TopicCluster[]; summary: string; model: string;
+}
 export interface Job<T> {
   id: string; type: string;
   status: "pending" | "running" | "done" | "failed";

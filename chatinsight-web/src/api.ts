@@ -2,7 +2,7 @@ import axios from "axios";
 import type {
   ChatListItem, ImportResult, Report,
   AiInsight, PersonalityProfile, PeriodComparison, Job,
-  LifeTimelineResult, PersonalityEvolutionResult,
+  LifeTimelineResult, PersonalityEvolutionResult, SearchResponse, TopicClusterResult,
 } from "./types";
 
 export const BASE_URL = "http://localhost:5201";
@@ -70,4 +70,17 @@ export async function getLifeTimelineAsync(id: string, onTick?: (s: string) => v
 }
 export async function getEvolutionAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityEvolutionResult> {
   return pollJob<PersonalityEvolutionResult>(await startJob(id, "evolution"), onTick);
+}
+
+export async function buildEmbeddingsAsync(id: string, onTick?: (s: string) => void): Promise<{ built: number }> {
+  return pollJob<{ built: number }>(await startJob(id, "embeddings"), onTick);
+}
+
+export async function semanticSearch(id: string, q: string, limit = 10): Promise<SearchResponse> {
+  const { data } = await api.get(`/api/chats/${id}/search`, { params: { q, limit } });
+  return data;
+}
+
+export async function getClustersAsync(id: string, onTick?: (s: string) => void): Promise<TopicClusterResult> {
+  return pollJob<TopicClusterResult>(await startJob(id, "clusters"), onTick);
 }
