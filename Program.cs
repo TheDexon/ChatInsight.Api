@@ -60,6 +60,8 @@ builder.Services.AddScoped<PersonalityService>();
 builder.Services.AddScoped<PersonalityCacheService>();
 builder.Services.AddScoped<LifeTimelineService>();
 builder.Services.AddScoped<LifeTimelineCacheService>();
+builder.Services.AddScoped<PersonalityEvolutionService>();
+builder.Services.AddScoped<PersonalityEvolutionCacheService>();
 
 builder.Services.AddSingleton<AiJobQueue>();
 builder.Services.AddScoped<AiJobService>();

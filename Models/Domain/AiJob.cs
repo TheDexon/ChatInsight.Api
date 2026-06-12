@@ -5,6 +5,7 @@ public static class AiJobType
     public const string Insights = "insights";
     public const string Personality = "personality";
     public const string Timeline = "timeline";
+    public const string Evolution = "evolution";
 }
 
 public static class AiJobStatus

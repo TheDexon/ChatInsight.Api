@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   getReport, getComparison, reportPdfUrl,
-  getInsightsAsync, getPersonalityAsync, getLifeTimelineAsync,
+  getInsightsAsync, getPersonalityAsync, getLifeTimelineAsync, getEvolutionAsync,
 } from "../api";
 import type {
   Report, AiInsight, PersonalityProfile, PeriodComparison, Relationship,
-  LifeTimelineResult,
+  LifeTimelineResult, PersonalityEvolutionResult,
 } from "../types";
 import { HourChart, AuthorChart, DayChart } from "../components/Charts";
 
@@ -63,6 +63,7 @@ export default function ChatDetail() {
       <AiInsightBlock id={id} />
       <PersonalityBlock id={id} />
       <LifeTimelineBlock id={id} />
+      <EvolutionBlock id={id} />
       <CompareBlock id={id} />
     </div>
   );
@@ -290,6 +291,74 @@ function LifeTimelineBlock({ id }: { id: string }) {
         </div>
       )}
     </section>
+  );
+}
+
+function EvolutionBlock({ id }: { id: string }) {
+  const [data, setData] = useState<PersonalityEvolutionResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true); setErr(null);
+    try { setData(await getEvolutionAsync(id, (s) => setStatus(statusLabel(s)))); }
+    catch (e: any) { setErr(e?.message || "Не удалось построить эволюцию. Запущена ли Ollama?"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-xl">Эволюция личности</h2>
+        {!data && <AiButton busy={busy} status={status} onClick={run} label="Построить" />}
+      </div>
+      {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
+      {data && (
+        <div className="space-y-4">
+          {data.summary && (
+            <div className="rounded-xl border border-line bg-accent-soft/50 p-5 text-sm">{data.summary}</div>
+          )}
+          {data.entries.length === 0 ? (
+            <div className="rounded-xl border border-line bg-card p-5 text-sm text-muted">
+              Не хватило данных для анализа эволюции.
+            </div>
+          ) : (
+            data.entries.map((e) => (
+              <div key={e.participant} className="rounded-xl border border-line bg-card p-5">
+                <div className="font-display text-lg mb-3">{e.participant}</div>
+                <div className="grid md:grid-cols-2 gap-3 mb-3">
+                  <PortraitMini label="Раньше" p={e.before} />
+                  <PortraitMini label="Позже" p={e.after} accent />
+                </div>
+                {e.change && (
+                  <p className="text-sm border-t border-line pt-3">
+                    <b>Что изменилось.</b> {e.change}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+          {data.model && <div className="font-mono text-[11px] text-muted">{data.model}</div>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PortraitMini({ label, p, accent }: {
+  label: string; p: PersonalityProfile; accent?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg p-4 ${accent ? "bg-accent-soft" : "bg-paper"}`}>
+      <div className="font-mono text-[11px] text-muted uppercase tracking-wide mb-2">{label}</div>
+      <p className="text-sm mb-2">{p.summary}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {p.traits.map((t) => (
+          <span key={t} className="font-mono text-[11px] bg-card border border-line rounded px-1.5 py-0.5">{t}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 

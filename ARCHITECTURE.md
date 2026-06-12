@@ -32,7 +32,7 @@ GET /api/chats/{id}/report(.pdf)|/compare
 
 ### Асинхронный AI (очередь → воркер → БД → опрос)
 ```text
-POST /api/chats/{id}/{insights|personality|lifetimeline}/async
+POST /api/chats/{id}/{insights|personality|lifetimeline|evolution}/async
    → AiJobService: дедуп (есть pending/running? вернуть его) → создать AiJob(pending)
                    → AiJobQueue.Enqueue(jobId) → вернуть {jobId} сразу
 AiJobWorker (фон): читает очередь → свой DI-scope → ChatAnalysisContext
@@ -52,7 +52,7 @@ AiJobWorker (фон): читает очередь → свой DI-scope → Chat
 | `Parsers/` · `Data/` · `Domain/` | парсер · DbContext+миграции · ChatAnalysisContext |
 | `Services/Text/` · `Services/Import/` | текст · импорт (upsert) |
 | `Services/Analytics/` | аналитика, Report/Relationship/Comparison, ChatContextLoader |
-| `Services/Ai/` | OllamaClient; Insight/Personality/LifeTimeline (+Cache); AiJobQueue/Service/Worker |
+| `Services/Ai/` | OllamaClient; Insight/Personality/LifeTimeline/Evolution (+Cache); AiJobQueue/Service/Worker |
 | `Reports/` | PdfReportService |
 | `Analysis/<Модуль>/` · `Controllers/` · `Configuration/` | DTO · HTTP · опции |
 
@@ -64,7 +64,7 @@ AiJobWorker (фон): читает очередь → свой DI-scope → Chat
 Chat 1─< Message ; Chat 1─1 ChatInsightRecord ; Chat 1─< PersonalityRecord (uniq ChatId+Participant)
 Chat 1─1 LifeTimelineRecord ; Chat 1─< AiJob
 
-AiJob:            Id, ChatId, JobType(insights|personality|timeline), Status, ResultJson?, Error?, CreatedAt, CompletedAt?
+AiJob:            Id, ChatId, JobType(insights|personality|timeline|evolution), Status, ResultJson?, Error?, CreatedAt, CompletedAt?
 LifeTimelineRecord: Id, ChatId(uniq), EventsJson, Summary, Model, GeneratedAt
 ```
 
@@ -78,7 +78,7 @@ LifeTimelineRecord: Id, ChatId(uniq), EventsJson, Summary, Model, GeneratedAt
 src/api.ts (REST + pollJob) · types.ts
 src/components/  Layout.tsx · Charts.tsx (часы/авторы/дни)
 src/pages/       Upload · ChatList · ChatDetail (метрики, графики, баланс отношений,
-                 эмоции, async AI-блоки: инсайты/портреты/хронология, сравнение, PDF)
+                 эмоции, async AI-блоки: инсайты/портреты/хронология/эволюция, сравнение, PDF)
 ```
 Async-блоки: кнопка → спиннер со статусом (в очереди/думает) → результат. Опрос `pollJob`.
 
@@ -96,7 +96,7 @@ Async-блоки: кнопка → спиннер со статусом (в оч
 
 ## Точки расширения / конфиг
 
-- **Эволюция личности:** сравнить портреты по периодам (есть Comparison + Personality).
+- **AI в PDF целиком:** добавить хронологию и эволюцию в отчёт.
 - **pgvector:** расширение Postgres, векторное поле в `Message`.
 - **Новые источники:** парсер Discord/WhatsApp/VK → та же модель `Message`.
 - Конфиг: `ConnectionStrings:Postgres` · `Ollama` (`llama3.1:8b`) · `EmotionAnalysis` ·

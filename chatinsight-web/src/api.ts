@@ -1,7 +1,8 @@
 import axios from "axios";
 import type {
   ChatListItem, ImportResult, Report,
-  AiInsight, PersonalityProfile, PeriodComparison, Job, LifeTimelineResult,
+  AiInsight, PersonalityProfile, PeriodComparison, Job,
+  LifeTimelineResult, PersonalityEvolutionResult,
 } from "./types";
 
 export const BASE_URL = "http://localhost:5201";
@@ -41,11 +42,9 @@ export async function getJob<T>(jobId: string): Promise<Job<T>> {
 }
 
 export async function pollJob<T>(
-  jobId: string,
-  onTick?: (status: string) => void,
-  intervalMs = 2000,
+  jobId: string, onTick?: (status: string) => void, intervalMs = 2000,
 ): Promise<T> {
-  for (let i = 0; i < 150; i++) {
+  for (let i = 0; i < 180; i++) {
     const job = await getJob<T>(jobId);
     onTick?.(job.status);
     if (job.status === "done") return job.result as T;
@@ -63,11 +62,12 @@ async function startJob(id: string, kind: string): Promise<string> {
 export async function getInsightsAsync(id: string, onTick?: (s: string) => void): Promise<AiInsight> {
   return pollJob<AiInsight>(await startJob(id, "insights"), onTick);
 }
-
 export async function getPersonalityAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityProfile[]> {
   return pollJob<PersonalityProfile[]>(await startJob(id, "personality"), onTick);
 }
-
 export async function getLifeTimelineAsync(id: string, onTick?: (s: string) => void): Promise<LifeTimelineResult> {
   return pollJob<LifeTimelineResult>(await startJob(id, "lifetimeline"), onTick);
+}
+export async function getEvolutionAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityEvolutionResult> {
+  return pollJob<PersonalityEvolutionResult>(await startJob(id, "evolution"), onTick);
 }

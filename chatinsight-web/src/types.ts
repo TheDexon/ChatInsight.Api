@@ -50,6 +50,17 @@ export interface LifeTimelineEvent {
 export interface LifeTimelineResult {
   events: LifeTimelineEvent[]; summary: string; model: string;
 }
+export interface EvolutionEntry {
+  participant: string;
+  before: PersonalityProfile;
+  after: PersonalityProfile;
+  change: string;
+}
+export interface PersonalityEvolutionResult {
+  entries: EvolutionEntry[];
+  summary: string;
+  model: string;
+}
 export interface Job<T> {
   id: string; type: string;
   status: "pending" | "running" | "done" | "failed";

@@ -14,6 +14,7 @@ public class ChatInsightDbContext : DbContext
     public DbSet<PersonalityRecord> Personalities => Set<PersonalityRecord>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
     public DbSet<LifeTimelineRecord> LifeTimelines => Set<LifeTimelineRecord>();
+    public DbSet<PersonalityEvolutionRecord> PersonalityEvolutions => Set<PersonalityEvolutionRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,10 +24,8 @@ public class ChatInsightDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(512);
             e.Property(x => x.Type).HasMaxLength(64);
             e.HasIndex(x => x.SourceId);
-            e.HasMany(x => x.Messages)
-                .WithOne(x => x.Chat)
-                .HasForeignKey(x => x.ChatId)
-                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Messages).WithOne(x => x.Chat)
+                .HasForeignKey(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Message>(e =>
@@ -44,8 +43,7 @@ public class ChatInsightDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.ChatId).IsUnique();
             e.HasOne(x => x.Chat).WithOne()
-                .HasForeignKey<ChatInsightRecord>(x => x.ChatId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey<ChatInsightRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Model).HasMaxLength(128);
         });
 
@@ -54,8 +52,7 @@ public class ChatInsightDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.ChatId, x.Participant }).IsUnique();
             e.HasOne(x => x.Chat).WithMany()
-                .HasForeignKey(x => x.ChatId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Participant).HasMaxLength(256);
             e.Property(x => x.Model).HasMaxLength(128);
         });
@@ -67,8 +64,7 @@ public class ChatInsightDbContext : DbContext
             e.Property(x => x.Status).HasMaxLength(32);
             e.HasIndex(x => new { x.ChatId, x.JobType, x.Status });
             e.HasOne<Chat>().WithMany()
-                .HasForeignKey(x => x.ChatId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<LifeTimelineRecord>(e =>
@@ -76,8 +72,16 @@ public class ChatInsightDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.ChatId).IsUnique();
             e.HasOne(x => x.Chat).WithOne()
-                .HasForeignKey<LifeTimelineRecord>(x => x.ChatId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .HasForeignKey<LifeTimelineRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Model).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<PersonalityEvolutionRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ChatId).IsUnique();
+            e.HasOne(x => x.Chat).WithOne()
+                .HasForeignKey<PersonalityEvolutionRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Model).HasMaxLength(128);
         });
     }

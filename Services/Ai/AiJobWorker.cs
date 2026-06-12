@@ -6,17 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChatInsight.Api.Services.Ai;
 
-/// <summary>
-/// Фоновый обработчик AI-задач. Берёт id из очереди, в отдельном scope
-/// гоняет модель через кэш-сервисы и пишет результат/ошибку в БД.
-/// </summary>
+/// <summary>Фоновый обработчик AI-задач: очередь → модель → результат в БД.</summary>
 public class AiJobWorker : BackgroundService
 {
     private readonly AiJobQueue _queue;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AiJobWorker> _logger;
 
-    // camelCase — чтобы JSON в ResultJson совпадал с тем, что ждёт фронт
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -36,10 +32,7 @@ public class AiJobWorker : BackgroundService
 
         await foreach (var jobId in _queue.ReadAllAsync(stoppingToken))
         {
-            try
-            {
-                await ProcessAsync(jobId, stoppingToken);
-            }
+            try { await ProcessAsync(jobId, stoppingToken); }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "AI-задача {JobId} упала с ошибкой", jobId);
@@ -53,8 +46,7 @@ public class AiJobWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<ChatInsightDbContext>();
 
         var pending = await db.AiJobs
-            .Where(j => j.Status == AiJobStatus.Pending ||
-                        j.Status == AiJobStatus.Running)
+            .Where(j => j.Status == AiJobStatus.Pending || j.Status == AiJobStatus.Running)
             .ToListAsync(ct);
 
         foreach (var j in pending)
@@ -91,6 +83,7 @@ public class AiJobWorker : BackgroundService
                 AiJobType.Insights => await InsightsJson(sp, context, job.ChatId, ct),
                 AiJobType.Personality => await PersonalityJson(sp, context, job.ChatId, ct),
                 AiJobType.Timeline => await TimelineJson(sp, context, job.ChatId, ct),
+                AiJobType.Evolution => await EvolutionJson(sp, context, job.ChatId, ct),
                 _ => throw new InvalidOperationException($"Неизвестный тип задачи: {job.JobType}")
             };
 
@@ -109,27 +102,27 @@ public class AiJobWorker : BackgroundService
         }
     }
 
-    private static async Task<string> InsightsJson(
-        IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid chatId, CancellationToken ct)
+    private static async Task<string> InsightsJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
     {
-        var cache = sp.GetRequiredService<AiInsightCacheService>();
-        var (insight, _) = await cache.GetOrCreateAsync(ctx, chatId, false, ct);
-        return JsonSerializer.Serialize(insight, JsonOpts);
+        var (r, _) = await sp.GetRequiredService<AiInsightCacheService>().GetOrCreateAsync(ctx, id, false, ct);
+        return JsonSerializer.Serialize(r, JsonOpts);
     }
 
-    private static async Task<string> PersonalityJson(
-        IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid chatId, CancellationToken ct)
+    private static async Task<string> PersonalityJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
     {
-        var cache = sp.GetRequiredService<PersonalityCacheService>();
-        var (profiles, _) = await cache.GetOrCreateAsync(ctx, chatId, false, ct);
-        return JsonSerializer.Serialize(profiles, JsonOpts);
+        var (r, _) = await sp.GetRequiredService<PersonalityCacheService>().GetOrCreateAsync(ctx, id, false, ct);
+        return JsonSerializer.Serialize(r, JsonOpts);
     }
 
-    private static async Task<string> TimelineJson(
-        IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid chatId, CancellationToken ct)
+    private static async Task<string> TimelineJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
     {
-        var cache = sp.GetRequiredService<LifeTimelineCacheService>();
-        var (result, _) = await cache.GetOrCreateAsync(ctx, chatId, false, ct);
-        return JsonSerializer.Serialize(result, JsonOpts);
+        var (r, _) = await sp.GetRequiredService<LifeTimelineCacheService>().GetOrCreateAsync(ctx, id, false, ct);
+        return JsonSerializer.Serialize(r, JsonOpts);
+    }
+
+    private static async Task<string> EvolutionJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
+    {
+        var (r, _) = await sp.GetRequiredService<PersonalityEvolutionCacheService>().GetOrCreateAsync(ctx, id, false, ct);
+        return JsonSerializer.Serialize(r, JsonOpts);
     }
 }

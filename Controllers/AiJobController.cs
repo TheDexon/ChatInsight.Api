@@ -32,28 +32,23 @@ public class AiJobController : ControllerBase
     public async Task<IActionResult> StartTimeline(Guid id, CancellationToken ct) =>
         Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Timeline, ct) });
 
+    [HttpPost("chats/{id:guid}/evolution/async")]
+    public async Task<IActionResult> StartEvolution(Guid id, CancellationToken ct) =>
+        Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Evolution, ct) });
+
     [HttpGet("jobs/{jobId:guid}")]
     public async Task<IActionResult> Get(Guid jobId, CancellationToken ct)
     {
-        var job = await _db.AiJobs
-            .AsNoTracking()
+        var job = await _db.AiJobs.AsNoTracking()
             .FirstOrDefaultAsync(j => j.Id == jobId, ct);
 
-        if (job is null)
-            return NotFound();
+        if (job is null) return NotFound();
 
         JsonNode? result =
             job.Status == AiJobStatus.Done && job.ResultJson is not null
                 ? JsonNode.Parse(job.ResultJson)
                 : null;
 
-        return Ok(new
-        {
-            id = job.Id,
-            type = job.JobType,
-            status = job.Status,
-            result,
-            error = job.Error
-        });
+        return Ok(new { id = job.Id, type = job.JobType, status = job.Status, result, error = job.Error });
     }
 }
