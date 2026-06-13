@@ -93,6 +93,7 @@ public class PersonalityEvolutionService
         List<EvolutionEntry> entries, CancellationToken ct)
     {
         var system =
+            AiPrompts.IronyNote +
             "Ты — психолог. Для каждого участника даны два портрета: РАНЬШЕ и ПОЗЖЕ. " +
             "Опиши, как человек изменился между периодами: change — 1-2 предложения о " +
             "ключевых изменениях характера/стиля/настроя. summary — общий вывод об " +

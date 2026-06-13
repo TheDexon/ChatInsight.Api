@@ -2,7 +2,7 @@
 
 Платформа для интеллектуального анализа личных переписок. Импорт Telegram →
 PostgreSQL → статистика, темы, эмоции, баланс отношений, сравнение периодов,
-AI-инсайты, AI-портреты, **AI-хронология жизни**, **эволюция личности**, PDF-отчёт. Веб-интерфейс с
+AI-инсайты, AI-портреты, **AI-хронология жизни**, **эволюция личности**, **смысловой поиск**, **темы по смыслу**, **полный анализ по периодам**, PDF-отчёт. Веб-интерфейс с
 графиками и асинхронными AI-блоками.
 
 Две части: **ChatInsight.Api** (backend) и **chatinsight-web** (frontend).
@@ -24,6 +24,7 @@ cd ChatInsight.Api
 docker compose up -d
 dotnet ef database update
 ollama pull llama3.1:8b
+ollama pull nomic-embed-text   # для смыслового поиска
 dotnet run                    # http://localhost:5201
 
 # frontend

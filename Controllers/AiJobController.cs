@@ -21,27 +21,73 @@ public class AiJobController : ControllerBase
     }
 
     [HttpPost("chats/{id:guid}/insights/async")]
-    public async Task<IActionResult> StartInsights(Guid id, CancellationToken ct) =>
-        Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Insights, ct) });
+    public Task<IActionResult> StartInsights(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Insights, refresh, ct);
 
     [HttpPost("chats/{id:guid}/personality/async")]
-    public async Task<IActionResult> StartPersonality(Guid id, CancellationToken ct) =>
-        Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Personality, ct) });
+    public Task<IActionResult> StartPersonality(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Personality, refresh, ct);
 
     [HttpPost("chats/{id:guid}/lifetimeline/async")]
-    public async Task<IActionResult> StartTimeline(Guid id, CancellationToken ct) =>
-        Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Timeline, ct) });
+    public Task<IActionResult> StartTimeline(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Timeline, refresh, ct);
 
     [HttpPost("chats/{id:guid}/evolution/async")]
-    public async Task<IActionResult> StartEvolution(Guid id, CancellationToken ct) =>
-        Ok(new { jobId = await _jobs.EnqueueAsync(id, AiJobType.Evolution, ct) });
+    public Task<IActionResult> StartEvolution(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Evolution, refresh, ct);
+
+    [HttpPost("chats/{id:guid}/embeddings/async")]
+    public Task<IActionResult> StartEmbeddings(Guid id, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Embeddings, false, ct);
+
+    [HttpPost("chats/{id:guid}/clusters/async")]
+    public Task<IActionResult> StartClusters(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Clusters, refresh, ct);
+
+    [HttpPost("chats/{id:guid}/rollup/async")]
+    public Task<IActionResult> StartRollup(Guid id, [FromQuery] bool refresh = false, CancellationToken ct = default) =>
+        StartAsync(id, AiJobType.Rollup, refresh, ct);
+
+    private async Task<IActionResult> StartAsync(
+        Guid id, string jobType, bool refresh, CancellationToken ct)
+    {
+        if (refresh)
+            await ClearCacheAsync(id, jobType, ct);
+
+        var jobId = await _jobs.EnqueueAsync(id, jobType, ct);
+        return Ok(new { jobId });
+    }
+
+    /// <summary>Сбрасывает кэш результата нужного типа — следующая задача пересчитает.</summary>
+    private async Task ClearCacheAsync(Guid chatId, string jobType, CancellationToken ct)
+    {
+        switch (jobType)
+        {
+            case AiJobType.Insights:
+                await _db.Insights.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+            case AiJobType.Personality:
+                await _db.Personalities.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+            case AiJobType.Timeline:
+                await _db.LifeTimelines.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+            case AiJobType.Evolution:
+                await _db.PersonalityEvolutions.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+            case AiJobType.Clusters:
+                await _db.TopicClusters.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+            case AiJobType.Rollup:
+                await _db.Rollups.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                break;
+        }
+    }
 
     [HttpGet("jobs/{jobId:guid}")]
     public async Task<IActionResult> Get(Guid jobId, CancellationToken ct)
     {
-        var job = await _db.AiJobs.AsNoTracking()
-            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
-
+        var job = await _db.AiJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null) return NotFound();
 
         JsonNode? result =
@@ -49,6 +95,6 @@ public class AiJobController : ControllerBase
                 ? JsonNode.Parse(job.ResultJson)
                 : null;
 
-        return Ok(new { id = job.Id, type = job.JobType, status = job.Status, result, error = job.Error });
+        return Ok(new { id = job.Id, type = job.JobType, status = job.Status, result, error = job.Error, progress = job.Progress });
     }
 }

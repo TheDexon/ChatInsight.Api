@@ -6,6 +6,9 @@ public static class AiJobType
     public const string Personality = "personality";
     public const string Timeline = "timeline";
     public const string Evolution = "evolution";
+    public const string Embeddings = "embeddings";
+    public const string Clusters = "clusters";
+    public const string Rollup = "rollup";
 }
 
 public static class AiJobStatus
@@ -20,12 +23,13 @@ public class AiJob
 {
     public Guid Id { get; set; }
     public Guid ChatId { get; set; }
-
     public string JobType { get; set; } = "";
     public string Status { get; set; } = AiJobStatus.Pending;
-
     public string? ResultJson { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>Прогресс длинных задач, например «40/96».</summary>
+    public string? Progress { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

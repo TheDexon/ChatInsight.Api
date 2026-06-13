@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using ChatInsight.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace ChatInsight.Api.Migrations
 {
     [DbContext(typeof(ChatInsightDbContext))]
-    partial class ChatInsightDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612125052_AddTopicClusters")]
+    partial class AddTopicClusters
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -47,9 +50,6 @@ namespace ChatInsight.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
-
-                    b.Property<string>("Progress")
-                        .HasColumnType("text");
 
                     b.Property<string>("ResultJson")
                         .HasColumnType("text");
@@ -307,38 +307,6 @@ namespace ChatInsight.Api.Migrations
                     b.ToTable("Personalities");
                 });
 
-            modelBuilder.Entity("ChatInsight.Api.Models.Domain.RollupRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ChatId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("DigestCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime>("GeneratedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Model")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)");
-
-                    b.Property<string>("ResultJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ChatId")
-                        .IsUnique();
-
-                    b.ToTable("Rollups");
-                });
-
             modelBuilder.Entity("ChatInsight.Api.Models.Domain.TopicClusterRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -435,17 +403,6 @@ namespace ChatInsight.Api.Migrations
                     b.HasOne("ChatInsight.Api.Models.Domain.Chat", "Chat")
                         .WithMany()
                         .HasForeignKey("ChatId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Chat");
-                });
-
-            modelBuilder.Entity("ChatInsight.Api.Models.Domain.RollupRecord", b =>
-                {
-                    b.HasOne("ChatInsight.Api.Models.Domain.Chat", "Chat")
-                        .WithOne()
-                        .HasForeignKey("ChatInsight.Api.Models.Domain.RollupRecord", "ChatId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

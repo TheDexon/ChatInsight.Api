@@ -18,8 +18,11 @@ builder.Services.Configure<EmotionAnalysisOptions>(
 builder.Services.Configure<OllamaOptions>(
     builder.Configuration.GetSection(OllamaOptions.SectionName));
 
+// PostgreSQL + pgvector
 builder.Services.AddDbContext<ChatInsightDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("Postgres"),
+        npgsql => npgsql.UseVector()));
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -54,6 +57,7 @@ builder.Services.AddScoped<ComparisonService>();
 builder.Services.AddScoped<PdfReportService>();
 
 builder.Services.AddHttpClient<OllamaClient>();
+builder.Services.AddHttpClient<OllamaEmbeddingClient>();
 builder.Services.AddScoped<AiInsightService>();
 builder.Services.AddScoped<AiInsightCacheService>();
 builder.Services.AddScoped<PersonalityService>();
@@ -62,6 +66,12 @@ builder.Services.AddScoped<LifeTimelineService>();
 builder.Services.AddScoped<LifeTimelineCacheService>();
 builder.Services.AddScoped<PersonalityEvolutionService>();
 builder.Services.AddScoped<PersonalityEvolutionCacheService>();
+builder.Services.AddScoped<EmbeddingService>();
+builder.Services.AddScoped<SemanticSearchService>();
+builder.Services.AddScoped<TopicClusterService>();
+builder.Services.AddScoped<TopicClusterCacheService>();
+builder.Services.AddScoped<DailyDigestService>();
+builder.Services.AddScoped<RollupCacheService>();
 
 builder.Services.AddSingleton<AiJobQueue>();
 builder.Services.AddScoped<AiJobService>();

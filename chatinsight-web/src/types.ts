@@ -73,8 +73,15 @@ export interface TopicCluster {
 export interface TopicClusterResult {
   clusters: TopicCluster[]; summary: string; model: string;
 }
+export interface RollupEvent {
+  period: string; title: string; description: string;
+}
+export interface RollupResult {
+  summary: string; timeline: RollupEvent[]; digestCount: number; model: string;
+}
 export interface Job<T> {
   id: string; type: string;
   status: "pending" | "running" | "done" | "failed";
   result: T | null; error: string | null;
+  progress?: string | null;
 }

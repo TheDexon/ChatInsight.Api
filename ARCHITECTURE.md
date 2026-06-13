@@ -9,7 +9,7 @@ chatinsight-web (React/Vite :5173)
 ChatInsight.Api (ASP.NET Core :5201)
         ├─ PostgreSQL (EF Core)
         ├─ AiJobWorker (BackgroundService) ←─ AiJobQueue (Channel)
-        └─ Ollama (:11434, локальная LLM)
+        └─ Ollama (:11434): llama3.1 (анализ) + nomic-embed-text (векторы)
 ```
 
 ---
@@ -32,7 +32,7 @@ GET /api/chats/{id}/report(.pdf)|/compare
 
 ### Асинхронный AI (очередь → воркер → БД → опрос)
 ```text
-POST /api/chats/{id}/{insights|personality|lifetimeline|evolution}/async
+POST /api/chats/{id}/{insights|personality|lifetimeline|evolution|embeddings|clusters|rollup}/async
    → AiJobService: дедуп (есть pending/running? вернуть его) → создать AiJob(pending)
                    → AiJobQueue.Enqueue(jobId) → вернуть {jobId} сразу
 AiJobWorker (фон): читает очередь → свой DI-scope → ChatAnalysisContext
@@ -50,9 +50,9 @@ AiJobWorker (фон): читает очередь → свой DI-scope → Chat
 |---|---|
 | `Models/Telegram/` · `Models/Domain/` | контракты ввода · сущности БД (Chat, Message, *Record, AiJob, LifeTimelineRecord) |
 | `Parsers/` · `Data/` · `Domain/` | парсер · DbContext+миграции · ChatAnalysisContext |
-| `Services/Text/` · `Services/Import/` | текст · импорт (upsert) |
+| `Services/Text/` · `Services/Import/` | текст, MeaningfulTextFilter · импорт (upsert) |
 | `Services/Analytics/` | аналитика, Report/Relationship/Comparison, ChatContextLoader |
-| `Services/Ai/` | OllamaClient; Insight/Personality/LifeTimeline/Evolution (+Cache); AiJobQueue/Service/Worker |
+| `Services/Ai/` | OllamaClient/EmbeddingClient; Insight/Personality/Timeline/Evolution (+Cache); Embedding/SemanticSearch/TopicCluster (k-means); DailyDigest/RollupCache (полный охват); AiJobQueue/Service/Worker |
 | `Reports/` | PdfReportService |
 | `Analysis/<Модуль>/` · `Controllers/` · `Configuration/` | DTO · HTTP · опции |
 
@@ -64,7 +64,7 @@ AiJobWorker (фон): читает очередь → свой DI-scope → Chat
 Chat 1─< Message ; Chat 1─1 ChatInsightRecord ; Chat 1─< PersonalityRecord (uniq ChatId+Participant)
 Chat 1─1 LifeTimelineRecord ; Chat 1─< AiJob
 
-AiJob:            Id, ChatId, JobType(insights|personality|timeline|evolution), Status, ResultJson?, Error?, CreatedAt, CompletedAt?
+AiJob:            Id, ChatId, JobType(insights|personality|timeline|evolution|embeddings|clusters|rollup), Status, ResultJson?, Error?, CreatedAt, CompletedAt?
 LifeTimelineRecord: Id, ChatId(uniq), EventsJson, Summary, Model, GeneratedAt
 ```
 
@@ -88,16 +88,40 @@ Async-блоки: кнопка → спиннер со статусом (в оч
 
 - `OllamaClient` — `IHttpClientFactory`, JSON Schema в `format` (движок гарантирует структуру).
 - Кэш-сервисы (`*CacheService`) — единый паттерн get-or-create + read-only `GetCached`.
-- Воркер сериализует результат **camelCase** → совпадает с тем, что отдают синхронные
-  эндпоинты и ждёт фронт.
+- Воркер сериализует результат **camelCase**. Все AI-промпты включают AiPrompts.IronyNote
+  (общение ироничное). Эмбеддинги/кластеры строятся только по осмысленным сообщениям.
+  Пересчёт: POST `…/async?refresh=true` сбрасывает кэш нужного типа.
 - Недоступна Ollama → задача `failed` с текстом ошибки; синхронные эндпоинты → 503.
 
 ---
 
+## Семантический поиск (pgvector)
+
+```text
+POST /chats/{id}/embeddings/async → фоном: для каждого сообщения Ollama /api/embeddings
+   (nomic-embed-text → 768) → MessageEmbeddings.Embedding (vector(768))
+GET  /chats/{id}/search?q=... → embed(запрос) → ORDER BY Embedding <=> qv (косинус) → top-N
+```
+EF: `UseVector()` в Program.cs; `HasPostgresExtension("vector")`; колонка `vector(768)`;
+образ БД `pgvector/pgvector:pg16`. Размерность 768 жёстко завязана на nomic-embed-text.
+
+## Полный анализ по периодам (Rollup Engine)
+
+```text
+POST /chats/{id}/rollup/async → фоном:
+  фаза 1: сообщения чата режутся по ~250 → по каждому AI-выжимка
+          {summary, mood, events[]} (мусор отфильтрован, медиа посчитаны);
+          прогресс пишется в AiJob.Progress = "done/total";
+  фаза 2: все выжимки → один AI-проход → {summary, timeline[]} → кэш Rollups.
+GET /jobs/{id} возвращает progress для индикатора на фронте.
+```
+Видит 100% переписки (а не выборку 200), поэтому хронология полнее и точнее.
+
 ## Точки расширения / конфиг
 
 - **AI в PDF целиком:** добавить хронологию и эволюцию в отчёт.
+- **Группы (>2):** обобщить Relationship/баланс под N участников.
 - **pgvector:** расширение Postgres, векторное поле в `Message`.
 - **Новые источники:** парсер Discord/WhatsApp/VK → та же модель `Message`.
-- Конфиг: `ConnectionStrings:Postgres` · `Ollama` (`llama3.1:8b`) · `EmotionAnalysis` ·
+- Конфиг: `ConnectionStrings:Postgres` · `Ollama` (`llama3.1:8b` + `nomic-embed-text`) · `EmotionAnalysis` ·
   CORS→:5173 · HTTPS-редирект только вне Development · EF Npgsql, мажор=`net9.0`.

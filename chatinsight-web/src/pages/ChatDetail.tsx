@@ -3,15 +3,19 @@ import { useParams } from "react-router-dom";
 import {
   getReport, getComparison, reportPdfUrl,
   getInsightsAsync, getPersonalityAsync, getLifeTimelineAsync, getEvolutionAsync,
-  buildEmbeddingsAsync, semanticSearch, getClustersAsync,
+  buildEmbeddingsAsync, semanticSearch, getClustersAsync, getRollupAsync,
 } from "../api";
 import type {
   Report, AiInsight, PersonalityProfile, PeriodComparison, Relationship,
-  LifeTimelineResult, PersonalityEvolutionResult, SearchHit, TopicClusterResult,
+  LifeTimelineResult, PersonalityEvolutionResult, SearchHit, TopicClusterResult, RollupResult,
 } from "../types";
 import { HourChart, AuthorChart, DayChart } from "../components/Charts";
 
 function statusLabel(s: string): string {
+  if (s.startsWith("progress:")) {
+    const [done, total] = s.slice(9).split("/");
+    return `Обработано ${done}/${total} периодов…`;
+  }
   if (s === "pending") return "В очереди…";
   if (s === "running") return "Модель думает…";
   return "Считаю…";
@@ -67,6 +71,7 @@ export default function ChatDetail() {
       <EvolutionBlock id={id} />
       <SemanticSearchBlock id={id} />
       <ClustersBlock id={id} />
+      <RollupBlock id={id} />
       <CompareBlock id={id} />
     </div>
   );
@@ -173,9 +178,9 @@ function AiInsightBlock({ id }: { id: string }) {
   const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true); setErr(null);
-    try { setData(await getInsightsAsync(id, (s) => setStatus(statusLabel(s)))); }
+    try { setData(await getInsightsAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
     catch (e: any) { setErr(e?.message || "Не удалось получить AI-анализ. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
@@ -184,7 +189,7 @@ function AiInsightBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">AI-анализ</h2>
-        {!data && <AiButton busy={busy} status={status} onClick={run} />}
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Запустить"} />
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -216,9 +221,9 @@ function PersonalityBlock({ id }: { id: string }) {
   const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true); setErr(null);
-    try { setData(await getPersonalityAsync(id, (s) => setStatus(statusLabel(s)))); }
+    try { setData(await getPersonalityAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
     catch (e: any) { setErr(e?.message || "Не удалось построить портреты. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
@@ -227,7 +232,7 @@ function PersonalityBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">Портреты участников</h2>
-        {!data && <AiButton busy={busy} status={status} onClick={run} />}
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Запустить"} />
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -256,9 +261,9 @@ function LifeTimelineBlock({ id }: { id: string }) {
   const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true); setErr(null);
-    try { setData(await getLifeTimelineAsync(id, (s) => setStatus(statusLabel(s)))); }
+    try { setData(await getLifeTimelineAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
     catch (e: any) { setErr(e?.message || "Не удалось построить хронологию. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
@@ -267,7 +272,7 @@ function LifeTimelineBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">Хронология жизни</h2>
-        {!data && <AiButton busy={busy} status={status} onClick={run} label="Построить" />}
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Построить"} />
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -303,9 +308,9 @@ function EvolutionBlock({ id }: { id: string }) {
   const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true); setErr(null);
-    try { setData(await getEvolutionAsync(id, (s) => setStatus(statusLabel(s)))); }
+    try { setData(await getEvolutionAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
     catch (e: any) { setErr(e?.message || "Не удалось построить эволюцию. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
@@ -314,7 +319,7 @@ function EvolutionBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">Эволюция личности</h2>
-        {!data && <AiButton busy={busy} status={status} onClick={run} label="Построить" />}
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Построить"} />
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -460,9 +465,9 @@ function ClustersBlock({ id }: { id: string }) {
   const [status, setStatus] = useState("Считаю…");
   const [err, setErr] = useState<string | null>(null);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true); setErr(null);
-    try { setData(await getClustersAsync(id, (s) => setStatus(statusLabel(s)))); }
+    try { setData(await getClustersAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
     catch (e: any) { setErr(e?.message || "Не удалось построить темы. Запущена ли Ollama?"); }
     finally { setBusy(false); }
   }
@@ -474,7 +479,7 @@ function ClustersBlock({ id }: { id: string }) {
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-display text-xl">Темы по смыслу</h2>
-        {!data && <AiButton busy={busy} status={status} onClick={run} label="Разбить на темы" />}
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Разбить на темы"} />
       </div>
       {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
       {data && (
@@ -507,11 +512,59 @@ function ClustersBlock({ id }: { id: string }) {
   );
 }
 
+function RollupBlock({ id }: { id: string }) {
+  const [data, setData] = useState<RollupResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Считаю…");
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run(refresh = false) {
+    setBusy(true); setErr(null);
+    try { setData(await getRollupAsync(id, (s) => setStatus(statusLabel(s)), refresh)); }
+    catch (e: any) { setErr(e?.message || "Не удалось построить анализ. Запущена ли Ollama?"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-display text-xl">Полный анализ по периодам</h2>
+        <AiButton busy={busy} status={status} onClick={() => run(!!data)} label={data ? "Пересчитать" : "Запустить"} />
+      </div>
+      <p className="text-xs text-muted mb-4">
+        Проходит по всей переписке кусками (≈250 сообщений), делает выжимку каждого и
+        собирает в единую хронологию. Видит 100% чата, а не выборку — но идёт дольше.
+      </p>
+      {err && <div className="rounded-lg bg-ember/10 text-ember px-4 py-3 text-sm">{err}</div>}
+      {data && (
+        <div className="rounded-xl border border-line bg-card p-5 space-y-5">
+          {data.summary && <p className="text-sm leading-relaxed">{data.summary}</p>}
+          {data.timeline.length > 0 && (
+            <div className="relative pl-5 space-y-4 border-l border-line">
+              {data.timeline.map((ev, i) => (
+                <div key={i} className="relative">
+                  <span className="absolute -left-[1.45rem] top-1 w-2.5 h-2.5 rounded-full bg-accent" />
+                  <div className="font-mono text-xs text-accent mb-0.5">{ev.period}</div>
+                  <div className="font-display text-sm">{ev.title}</div>
+                  <div className="text-sm text-muted">{ev.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="font-mono text-[11px] text-muted">
+            {data.digestCount > 0 ? `${data.digestCount} периодов · ` : ""}{data.model}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function CompareBlock({ id }: { id: string }) {
   const [data, setData] = useState<PeriodComparison | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run() {
+  async function run(refresh = false) {
     setBusy(true);
     try { setData(await getComparison(id)); } finally { setBusy(false); }
   }

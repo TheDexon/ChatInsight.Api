@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: chatinsight-pg
     environment:
       POSTGRES_USER: chatinsight
@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - chatinsight-pgdata:/var/lib/postgresql/data
+      - chatinsight_pgdata:/var/lib/postgresql/data
 
 volumes:
-  chatinsight-pgdata:
+  chatinsight_pgdata:

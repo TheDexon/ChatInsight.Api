@@ -15,9 +15,14 @@ public class ChatInsightDbContext : DbContext
     public DbSet<AiJob> AiJobs => Set<AiJob>();
     public DbSet<LifeTimelineRecord> LifeTimelines => Set<LifeTimelineRecord>();
     public DbSet<PersonalityEvolutionRecord> PersonalityEvolutions => Set<PersonalityEvolutionRecord>();
+    public DbSet<MessageEmbedding> MessageEmbeddings => Set<MessageEmbedding>();
+    public DbSet<TopicClusterRecord> TopicClusters => Set<TopicClusterRecord>();
+    public DbSet<RollupRecord> Rollups => Set<RollupRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("vector");
+
         modelBuilder.Entity<Chat>(e =>
         {
             e.HasKey(x => x.Id);
@@ -82,6 +87,34 @@ public class ChatInsightDbContext : DbContext
             e.HasIndex(x => x.ChatId).IsUnique();
             e.HasOne(x => x.Chat).WithOne()
                 .HasForeignKey<PersonalityEvolutionRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Model).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<MessageEmbedding>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();   // = Message.Id
+            e.Property(x => x.Embedding).HasColumnType("vector(768)");
+            e.HasIndex(x => x.ChatId);
+            e.HasOne<Chat>().WithMany()
+                .HasForeignKey(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TopicClusterRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ChatId).IsUnique();
+            e.HasOne(x => x.Chat).WithOne()
+                .HasForeignKey<TopicClusterRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Model).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<RollupRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.ChatId).IsUnique();
+            e.HasOne(x => x.Chat).WithOne()
+                .HasForeignKey<RollupRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Model).HasMaxLength(128);
         });
     }

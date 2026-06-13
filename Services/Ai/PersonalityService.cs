@@ -10,10 +10,6 @@ using Microsoft.Extensions.Options;
 
 namespace ChatInsight.Api.Services.Ai;
 
-/// <summary>
-/// Строит AI-портрет каждого участника по его сообщениям.
-/// Один запрос к модели на участника (structured output по JSON Schema).
-/// </summary>
 public class PersonalityService
 {
     private readonly OllamaClient _ollama;
@@ -54,13 +50,8 @@ public class PersonalityService
 
         foreach (var author in context.Participants)
         {
-            var msgs = context.Messages
-                .Where(m => m.From == author)
-                .ToList();
-
-            if (msgs.Count == 0)
-                continue;
-
+            var msgs = context.Messages.Where(m => m.From == author).ToList();
+            if (msgs.Count == 0) continue;
             result.Add(await AnalyzeAuthorAsync(author, msgs, ct));
         }
 
@@ -68,17 +59,17 @@ public class PersonalityService
     }
 
     private async Task<PersonalityProfile> AnalyzeAuthorAsync(
-        string author,
-        List<TelegramMessage> msgs,
-        CancellationToken ct)
+        string author, List<TelegramMessage> msgs, CancellationToken ct)
     {
         var system =
+            AiPrompts.IronyNote +
             "Ты — психолог-аналитик. По сообщениям ОДНОГО участника переписки " +
             "составь его краткий портрет. Заполни все поля: " +
             "summary (2-3 предложения о характере и манере), " +
             "communicationStyle (как он общается), " +
             "traits (4-7 коротких черт характера). " +
-            "Пиши по-русски, объективно, без морализаторства и осуждения.";
+            "Пиши по-русски, объективно, без морализаторства и осуждения. " +
+            "Помни: мат и грубость в шутку — не признак агрессии.";
 
         var sb = new StringBuilder();
         sb.AppendLine($"Участник: {author}");

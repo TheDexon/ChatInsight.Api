@@ -9,10 +9,6 @@ using Microsoft.Extensions.Options;
 
 namespace ChatInsight.Api.Services.Ai;
 
-/// <summary>
-/// Готовит выжимку переписки, передаёт модели жёсткую JSON Schema
-/// (движок гарантирует заполнение всех полей) и парсит ответ в AiInsight.
-/// </summary>
 public class AiInsightService
 {
     private readonly OllamaClient _ollama;
@@ -29,7 +25,6 @@ public class AiInsightService
         _options = options.Value;
     }
 
-    // JSON Schema, по которой Ollama ОБЯЗАНА вернуть ответ
     private static JsonNode BuildSchema() => new JsonObject
     {
         ["type"] = "object",
@@ -48,10 +43,7 @@ public class AiInsightService
                 ["items"] = new JsonObject { ["type"] = "string" }
             }
         },
-        ["required"] = new JsonArray
-        {
-            "summary", "emotionalTone", "topics", "dynamics"
-        }
+        ["required"] = new JsonArray { "summary", "emotionalTone", "topics", "dynamics" }
     };
 
     public async Task<AiInsight> AnalyzeAsync(
@@ -59,6 +51,7 @@ public class AiInsightService
         CancellationToken ct = default)
     {
         var systemPrompt =
+            AiPrompts.IronyNote +
             "Ты — аналитик личных переписок. Анализируешь диалог объективно, " +
             "на русском языке. Заполни ВСЕ поля результата:\n" +
             "- summary: 2-4 предложения о характере общения и отношениях;\n" +
@@ -69,8 +62,7 @@ public class AiInsightService
 
         var userPrompt = BuildUserPrompt(context);
 
-        var raw = await _ollama.ChatAsync(
-            systemPrompt, userPrompt, BuildSchema(), ct);
+        var raw = await _ollama.ChatAsync(systemPrompt, userPrompt, BuildSchema(), ct);
 
         var insight = ParseInsight(raw);
         insight.Model = _ollama.Model;
@@ -98,12 +90,8 @@ public class AiInsightService
         {
             var m = messages[i];
             var text = _extractor.Extract(m.Text);
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            if (text.Length > 200)
-                text = text[..200] + "…";
-
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            if (text.Length > 200) text = text[..200] + "…";
             sb.AppendLine($"[{m.Date:dd.MM.yy}] {m.From}: {text}");
         }
 
@@ -113,23 +101,13 @@ public class AiInsightService
     private static AiInsight ParseInsight(string raw)
     {
         var json = ExtractJson(raw);
-
         try
         {
             var doc = JsonSerializer.Deserialize<AiInsight>(
-                json,
-                new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-            if (doc is not null)
-                return doc;
+                json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (doc is not null) return doc;
         }
-        catch (JsonException)
-        {
-            // не-JSON — кладём сырой текст в summary, чтобы не терять результат
-        }
+        catch (JsonException) { }
 
         return new AiInsight { Summary = raw.Trim() };
     }
@@ -138,10 +116,6 @@ public class AiInsightService
     {
         var start = raw.IndexOf('{');
         var end = raw.LastIndexOf('}');
-
-        if (start >= 0 && end > start)
-            return raw.Substring(start, end - start + 1);
-
-        return raw;
+        return (start >= 0 && end > start) ? raw.Substring(start, end - start + 1) : raw;
     }
 }

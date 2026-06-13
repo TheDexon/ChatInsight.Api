@@ -60,6 +60,7 @@ public class LifeTimelineService
         CancellationToken ct = default)
     {
         var system =
+            AiPrompts.IronyNote +
             "Ты — биограф-аналитик. По переписке восстанови хронологию жизни " +
             "участников: значимые события и изменения (работа, учёба, отношения, " +
             "переезды, увлечения, важные решения). Для каждого события укажи period " +

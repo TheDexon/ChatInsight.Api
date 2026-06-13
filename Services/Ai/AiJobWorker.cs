@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChatInsight.Api.Services.Ai;
 
-/// <summary>Фоновый обработчик AI-задач: очередь → модель → результат в БД.</summary>
 public class AiJobWorker : BackgroundService
 {
     private readonly AiJobQueue _queue;
@@ -16,10 +15,7 @@ public class AiJobWorker : BackgroundService
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
-    public AiJobWorker(
-        AiJobQueue queue,
-        IServiceScopeFactory scopeFactory,
-        ILogger<AiJobWorker> logger)
+    public AiJobWorker(AiJobQueue queue, IServiceScopeFactory scopeFactory, ILogger<AiJobWorker> logger)
     {
         _queue = queue;
         _scopeFactory = scopeFactory;
@@ -29,14 +25,10 @@ public class AiJobWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await RequeuePendingAsync(stoppingToken);
-
         await foreach (var jobId in _queue.ReadAllAsync(stoppingToken))
         {
             try { await ProcessAsync(jobId, stoppingToken); }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "AI-задача {JobId} упала с ошибкой", jobId);
-            }
+            catch (Exception ex) { _logger.LogError(ex, "AI-задача {JobId} упала", jobId); }
         }
     }
 
@@ -44,19 +36,15 @@ public class AiJobWorker : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ChatInsightDbContext>();
-
         var pending = await db.AiJobs
             .Where(j => j.Status == AiJobStatus.Pending || j.Status == AiJobStatus.Running)
             .ToListAsync(ct);
-
         foreach (var j in pending)
         {
             j.Status = AiJobStatus.Pending;
             await _queue.EnqueueAsync(j.Id, ct);
         }
-
-        if (pending.Count > 0)
-            await db.SaveChangesAsync(ct);
+        if (pending.Count > 0) await db.SaveChangesAsync(ct);
     }
 
     private async Task ProcessAsync(Guid jobId, CancellationToken ct)
@@ -74,20 +62,52 @@ public class AiJobWorker : BackgroundService
 
         try
         {
-            var context = await loader.LoadAsync(job.ChatId, ct);
-            if (context is null || context.IsEmpty)
-                throw new InvalidOperationException("Чат не найден или пуст.");
-
-            string resultJson = job.JobType switch
+            // задачи, не требующие аналитического контекста
+            if (job.JobType == AiJobType.Embeddings)
             {
-                AiJobType.Insights => await InsightsJson(sp, context, job.ChatId, ct),
-                AiJobType.Personality => await PersonalityJson(sp, context, job.ChatId, ct),
-                AiJobType.Timeline => await TimelineJson(sp, context, job.ChatId, ct),
-                AiJobType.Evolution => await EvolutionJson(sp, context, job.ChatId, ct),
-                _ => throw new InvalidOperationException($"Неизвестный тип задачи: {job.JobType}")
-            };
+                var n = await sp.GetRequiredService<EmbeddingService>().BuildAsync(job.ChatId, ct);
+                job.ResultJson = JsonSerializer.Serialize(new { built = n }, JsonOpts);
+            }
+            else if (job.JobType == AiJobType.Clusters)
+            {
+                var (res, _) = await sp.GetRequiredService<TopicClusterCacheService>()
+                    .GetOrCreateAsync(job.ChatId, false, ct);
+                job.ResultJson = JsonSerializer.Serialize(res, JsonOpts);
+            }
+            else if (job.JobType == AiJobType.Rollup)
+            {
+                var (res, _) = await sp.GetRequiredService<RollupCacheService>()
+                    .GetOrCreateAsync(job.ChatId, false, async (done, total) =>
+                    {
+                        job.Progress = $"{done}/{total}";
+                        await db.SaveChangesAsync(ct);
+                    }, ct);
+                job.ResultJson = JsonSerializer.Serialize(res, JsonOpts);
+            }
+            else
+            {
+                var context = await loader.LoadAsync(job.ChatId, ct);
+                if (context is null || context.IsEmpty)
+                    throw new InvalidOperationException("Чат не найден или пуст.");
 
-            job.ResultJson = resultJson;
+                job.ResultJson = job.JobType switch
+                {
+                    AiJobType.Insights => JsonSerializer.Serialize(
+                        (await sp.GetRequiredService<AiInsightCacheService>()
+                            .GetOrCreateAsync(context, job.ChatId, false, ct)).Insight, JsonOpts),
+                    AiJobType.Personality => JsonSerializer.Serialize(
+                        (await sp.GetRequiredService<PersonalityCacheService>()
+                            .GetOrCreateAsync(context, job.ChatId, false, ct)).Profiles, JsonOpts),
+                    AiJobType.Timeline => JsonSerializer.Serialize(
+                        (await sp.GetRequiredService<LifeTimelineCacheService>()
+                            .GetOrCreateAsync(context, job.ChatId, false, ct)).Result, JsonOpts),
+                    AiJobType.Evolution => JsonSerializer.Serialize(
+                        (await sp.GetRequiredService<PersonalityEvolutionCacheService>()
+                            .GetOrCreateAsync(context, job.ChatId, false, ct)).Result, JsonOpts),
+                    _ => throw new InvalidOperationException($"Неизвестный тип задачи: {job.JobType}")
+                };
+            }
+
             job.Status = AiJobStatus.Done;
             job.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
@@ -98,31 +118,7 @@ public class AiJobWorker : BackgroundService
             job.Error = ex.Message;
             job.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
-            _logger.LogWarning("AI-задача {JobId} завершилась ошибкой: {Error}", jobId, ex.Message);
+            _logger.LogWarning("AI-задача {JobId} ошибка: {Error}", jobId, ex.Message);
         }
-    }
-
-    private static async Task<string> InsightsJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
-    {
-        var (r, _) = await sp.GetRequiredService<AiInsightCacheService>().GetOrCreateAsync(ctx, id, false, ct);
-        return JsonSerializer.Serialize(r, JsonOpts);
-    }
-
-    private static async Task<string> PersonalityJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
-    {
-        var (r, _) = await sp.GetRequiredService<PersonalityCacheService>().GetOrCreateAsync(ctx, id, false, ct);
-        return JsonSerializer.Serialize(r, JsonOpts);
-    }
-
-    private static async Task<string> TimelineJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
-    {
-        var (r, _) = await sp.GetRequiredService<LifeTimelineCacheService>().GetOrCreateAsync(ctx, id, false, ct);
-        return JsonSerializer.Serialize(r, JsonOpts);
-    }
-
-    private static async Task<string> EvolutionJson(IServiceProvider sp, Domain.ChatAnalysisContext ctx, Guid id, CancellationToken ct)
-    {
-        var (r, _) = await sp.GetRequiredService<PersonalityEvolutionCacheService>().GetOrCreateAsync(ctx, id, false, ct);
-        return JsonSerializer.Serialize(r, JsonOpts);
     }
 }

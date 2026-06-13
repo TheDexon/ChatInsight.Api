@@ -2,7 +2,7 @@ import axios from "axios";
 import type {
   ChatListItem, ImportResult, Report,
   AiInsight, PersonalityProfile, PeriodComparison, Job,
-  LifeTimelineResult, PersonalityEvolutionResult, SearchResponse, TopicClusterResult,
+  LifeTimelineResult, PersonalityEvolutionResult, SearchResponse, TopicClusterResult, RollupResult,
 } from "./types";
 
 export const BASE_URL = "http://localhost:5201";
@@ -46,7 +46,7 @@ export async function pollJob<T>(
 ): Promise<T> {
   for (let i = 0; i < 180; i++) {
     const job = await getJob<T>(jobId);
-    onTick?.(job.status);
+    onTick?.(job.progress ? `progress:${job.progress}` : job.status);
     if (job.status === "done") return job.result as T;
     if (job.status === "failed") throw new Error(job.error || "Задача завершилась ошибкой.");
     await new Promise((r) => setTimeout(r, intervalMs));
@@ -54,22 +54,23 @@ export async function pollJob<T>(
   throw new Error("Превышено время ожидания задачи.");
 }
 
-async function startJob(id: string, kind: string): Promise<string> {
-  const { data } = await api.post(`/api/chats/${id}/${kind}/async`);
+async function startJob(id: string, kind: string, refresh = false): Promise<string> {
+  const url = `/api/chats/${id}/${kind}/async${refresh ? "?refresh=true" : ""}`;
+  const { data } = await api.post(url);
   return data.jobId;
 }
 
-export async function getInsightsAsync(id: string, onTick?: (s: string) => void): Promise<AiInsight> {
-  return pollJob<AiInsight>(await startJob(id, "insights"), onTick);
+export async function getInsightsAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<AiInsight> {
+  return pollJob<AiInsight>(await startJob(id, "insights", refresh), onTick);
 }
-export async function getPersonalityAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityProfile[]> {
-  return pollJob<PersonalityProfile[]>(await startJob(id, "personality"), onTick);
+export async function getPersonalityAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<PersonalityProfile[]> {
+  return pollJob<PersonalityProfile[]>(await startJob(id, "personality", refresh), onTick);
 }
-export async function getLifeTimelineAsync(id: string, onTick?: (s: string) => void): Promise<LifeTimelineResult> {
-  return pollJob<LifeTimelineResult>(await startJob(id, "lifetimeline"), onTick);
+export async function getLifeTimelineAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<LifeTimelineResult> {
+  return pollJob<LifeTimelineResult>(await startJob(id, "lifetimeline", refresh), onTick);
 }
-export async function getEvolutionAsync(id: string, onTick?: (s: string) => void): Promise<PersonalityEvolutionResult> {
-  return pollJob<PersonalityEvolutionResult>(await startJob(id, "evolution"), onTick);
+export async function getEvolutionAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<PersonalityEvolutionResult> {
+  return pollJob<PersonalityEvolutionResult>(await startJob(id, "evolution", refresh), onTick);
 }
 
 export async function buildEmbeddingsAsync(id: string, onTick?: (s: string) => void): Promise<{ built: number }> {
@@ -81,6 +82,10 @@ export async function semanticSearch(id: string, q: string, limit = 10): Promise
   return data;
 }
 
-export async function getClustersAsync(id: string, onTick?: (s: string) => void): Promise<TopicClusterResult> {
-  return pollJob<TopicClusterResult>(await startJob(id, "clusters"), onTick);
+export async function getClustersAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<TopicClusterResult> {
+  return pollJob<TopicClusterResult>(await startJob(id, "clusters", refresh), onTick);
+}
+
+export async function getRollupAsync(id: string, onTick?: (s: string) => void, refresh = false): Promise<RollupResult> {
+  return pollJob<RollupResult>(await startJob(id, "rollup", refresh), onTick);
 }
