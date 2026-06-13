@@ -52,7 +52,7 @@ AiJobWorker (фон): читает очередь → свой DI-scope → Chat
 | `Parsers/` · `Data/` · `Domain/` | парсер · DbContext+миграции · ChatAnalysisContext |
 | `Services/Text/` · `Services/Import/` | текст, MeaningfulTextFilter · импорт (upsert) |
 | `Services/Analytics/` | аналитика, Report/Relationship/Comparison, ChatContextLoader |
-| `Services/Ai/` | OllamaClient/EmbeddingClient; Insight/Personality/Timeline/Evolution (+Cache); Embedding/SemanticSearch/TopicCluster (k-means); DailyDigest/RollupCache (полный охват); AiJobQueue/Service/Worker |
+| `Services/Ai/` | OllamaClient/EmbeddingClient; Insight/Personality/Timeline/Evolution (+Cache); Embedding/SemanticSearch/TopicCluster (k-means); DigestService (выжимки-фундамент)/RollupCache; AiJobQueue/Service/Worker |
 | `Reports/` | PdfReportService |
 | `Analysis/<Модуль>/` · `Controllers/` · `Configuration/` | DTO · HTTP · опции |
 
@@ -104,6 +104,20 @@ GET  /chats/{id}/search?q=... → embed(запрос) → ORDER BY Embedding <=>
 ```
 EF: `UseVector()` в Program.cs; `HasPostgresExtension("vector")`; колонка `vector(768)`;
 образ БД `pgvector/pgvector:pg16`. Размерность 768 жёстко завязана на nomic-embed-text.
+
+## Единый фундамент анализа (Digest Engine)
+
+```text
+DigestService.GetOrBuildAsync(chatId):
+  если выжимки есть в PeriodDigests → вернуть; иначе:
+  режет весь чат по ~250 → по каждому куску AI-выжимка {summary,mood,events}
+  (мусор отфильтрован, медиа посчитаны) → СОХРАНЯЕТ в PeriodDigests.
+Поверх выжимок (один LLM-вызов каждый, полный охват):
+  AiInsightService → инсайты;  LifeTimelineService → вехи;  RollupCache → итог+таймлайн.
+Воркер строит выжимки с прогрессом job.Progress="N/M" перед агрегацией.
+Refresh: insights/timeline — пересчёт поверх готовых выжимок; rollup — полная пересборка
+(сброс PeriodDigests + Rollups + Insights + LifeTimelines).
+```
 
 ## Полный анализ по периодам (Rollup Engine)
 

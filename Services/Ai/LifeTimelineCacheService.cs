@@ -43,7 +43,7 @@ public class LifeTimelineCacheService
         if (existing is not null && !refresh)
             return (ToDto(existing), true);
 
-        var generated = await _svc.AnalyzeAsync(context, ct);
+        var generated = await _svc.AnalyzeAsync(chatId, ct);
         var eventsJson = JsonSerializer.Serialize(generated.Events);
 
         if (existing is null)

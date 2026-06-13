@@ -18,6 +18,7 @@ public class ChatInsightDbContext : DbContext
     public DbSet<MessageEmbedding> MessageEmbeddings => Set<MessageEmbedding>();
     public DbSet<TopicClusterRecord> TopicClusters => Set<TopicClusterRecord>();
     public DbSet<RollupRecord> Rollups => Set<RollupRecord>();
+    public DbSet<PeriodDigestRecord> PeriodDigests => Set<PeriodDigestRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -116,6 +117,19 @@ public class ChatInsightDbContext : DbContext
             e.HasOne(x => x.Chat).WithOne()
                 .HasForeignKey<RollupRecord>(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Model).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<PeriodDigestRecord>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.ChatId, x.OrderIndex });
+            e.HasOne(x => x.Chat).WithMany()
+                .HasForeignKey(x => x.ChatId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Model).HasMaxLength(128);
+            // даты без таймзоны — как в остальных таблицах (Messages.Date и т.п.)
+            e.Property(x => x.FromDate).HasColumnType("timestamp without time zone");
+            e.Property(x => x.ToDate).HasColumnType("timestamp without time zone");
+            e.Property(x => x.GeneratedAt).HasColumnType("timestamp without time zone");
         });
     }
 }

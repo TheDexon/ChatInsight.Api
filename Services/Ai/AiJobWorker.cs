@@ -47,6 +47,10 @@ public class AiJobWorker : BackgroundService
         if (pending.Count > 0) await db.SaveChangesAsync(ct);
     }
 
+    // типы анализа, которые строятся поверх выжимок (полный охват)
+    private static bool UsesDigests(string jobType) =>
+        jobType is AiJobType.Insights or AiJobType.Timeline or AiJobType.Rollup;
+
     private async Task ProcessAsync(Guid jobId, CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
@@ -62,7 +66,19 @@ public class AiJobWorker : BackgroundService
 
         try
         {
-            // задачи, не требующие аналитического контекста
+            // общий фундамент: строим выжимки один раз, с прогрессом «N/M периодов»
+            if (UsesDigests(job.JobType))
+            {
+                await sp.GetRequiredService<DigestService>().GetOrBuildAsync(
+                    job.ChatId,
+                    async (done, total) =>
+                    {
+                        job.Progress = $"{done}/{total}";
+                        await db.SaveChangesAsync(ct);
+                    },
+                    ct);
+            }
+
             if (job.JobType == AiJobType.Embeddings)
             {
                 var n = await sp.GetRequiredService<EmbeddingService>().BuildAsync(job.ChatId, ct);
@@ -77,11 +93,7 @@ public class AiJobWorker : BackgroundService
             else if (job.JobType == AiJobType.Rollup)
             {
                 var (res, _) = await sp.GetRequiredService<RollupCacheService>()
-                    .GetOrCreateAsync(job.ChatId, false, async (done, total) =>
-                    {
-                        job.Progress = $"{done}/{total}";
-                        await db.SaveChangesAsync(ct);
-                    }, ct);
+                    .GetOrCreateAsync(job.ChatId, false, ct);
                 job.ResultJson = JsonSerializer.Serialize(res, JsonOpts);
             }
             else

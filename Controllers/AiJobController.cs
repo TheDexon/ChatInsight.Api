@@ -79,7 +79,11 @@ public class AiJobController : ControllerBase
                 await _db.TopicClusters.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
                 break;
             case AiJobType.Rollup:
+                // полная пересборка: сбрасываем выжимки и всё, что на них построено
+                await _db.PeriodDigests.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
                 await _db.Rollups.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                await _db.Insights.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
+                await _db.LifeTimelines.Where(x => x.ChatId == chatId).ExecuteDeleteAsync(ct);
                 break;
         }
     }

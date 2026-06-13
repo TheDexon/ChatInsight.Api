@@ -12,27 +12,25 @@ public class RollupCacheService
         new() { PropertyNameCaseInsensitive = true };
 
     private readonly ChatInsightDbContext _db;
-    private readonly DailyDigestService _svc;
+    private readonly DigestService _digest;
 
-    public RollupCacheService(ChatInsightDbContext db, DailyDigestService svc)
+    public RollupCacheService(ChatInsightDbContext db, DigestService digest)
     {
         _db = db;
-        _svc = svc;
+        _digest = digest;
     }
 
     public async Task<(RollupResult Result, bool FromCache)> GetOrCreateAsync(
-        Guid chatId,
-        bool refresh,
-        Func<int, int, Task>? onProgress,
-        CancellationToken ct = default)
+        Guid chatId, bool refresh, CancellationToken ct = default)
     {
-        var existing = await _db.Rollups
-            .FirstOrDefaultAsync(x => x.ChatId == chatId, ct);
+        var existing = await _db.Rollups.FirstOrDefaultAsync(x => x.ChatId == chatId, ct);
 
         if (existing is not null && !refresh)
             return (ToDto(existing), true);
 
-        var generated = await _svc.AnalyzeAsync(chatId, onProgress, ct);
+        // выжимки уже построены воркером (с прогрессом); тут просто берём их и собираем
+        var digests = await _digest.GetOrBuildAsync(chatId, null, ct);
+        var generated = await _digest.RollupAsync(digests, ct);
         var resultJson = JsonSerializer.Serialize(generated);
 
         if (existing is null)
@@ -61,14 +59,7 @@ public class RollupCacheService
 
     private static RollupResult ToDto(RollupRecord r)
     {
-        try
-        {
-            return JsonSerializer.Deserialize<RollupResult>(r.ResultJson, Opts)
-                ?? new RollupResult();
-        }
-        catch (JsonException)
-        {
-            return new RollupResult();
-        }
+        try { return JsonSerializer.Deserialize<RollupResult>(r.ResultJson, Opts) ?? new(); }
+        catch (JsonException) { return new RollupResult(); }
     }
 }

@@ -44,14 +44,34 @@ export async function getJob<T>(jobId: string): Promise<Job<T>> {
 export async function pollJob<T>(
   jobId: string, onTick?: (status: string) => void, intervalMs = 2000,
 ): Promise<T> {
-  for (let i = 0; i < 180; i++) {
+  // Длинные задачи (построение выжимок по всему чату) идут десятки минут.
+  // Ждём терпеливо: пока есть признаки жизни — продолжаем; абсолютный потолок 2 часа.
+  const HARD_CAP = 3600;     // 3600 * 2с = 2 часа
+  const STALL_LIMIT = 180;   // нет движения прогресса 180 * 2с = 6 мин → считаем зависшей
+  let lastProgress = "";
+  let stall = 0;
+
+  for (let i = 0; i < HARD_CAP; i++) {
     const job = await getJob<T>(jobId);
-    onTick?.(job.progress ? `progress:${job.progress}` : job.status);
+    const prog = job.progress ?? "";
+    onTick?.(prog ? `progress:${prog}` : job.status);
+
     if (job.status === "done") return job.result as T;
     if (job.status === "failed") throw new Error(job.error || "Задача завершилась ошибкой.");
+
+    // Защита от зависания только когда задача сообщает прогресс:
+    // если прогресс не двигается слишком долго — выходим с понятной ошибкой.
+    if (prog) {
+      if (prog !== lastProgress) { lastProgress = prog; stall = 0; }
+      else if (++stall >= STALL_LIMIT) {
+        throw new Error("Задача не двигается уже несколько минут. Запущена ли Ollama?");
+      }
+    }
+    // Задачи без прогресса (эмбеддинги, портреты и т.п.) ждём до общего потолка.
+
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error("Превышено время ожидания задачи.");
+  throw new Error("Превышено максимальное время ожидания (2 часа).");
 }
 
 async function startJob(id: string, kind: string, refresh = false): Promise<string> {

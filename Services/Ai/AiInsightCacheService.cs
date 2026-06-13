@@ -49,7 +49,7 @@ public class AiInsightCacheService
         if (existing is not null && !refresh)
             return (ToDto(existing), true);
 
-        var generated = await _ai.AnalyzeAsync(context, ct);
+        var generated = await _ai.AnalyzeAsync(chatId, ct);
 
         if (existing is null)
         {

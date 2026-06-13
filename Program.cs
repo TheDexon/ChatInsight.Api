@@ -70,7 +70,7 @@ builder.Services.AddScoped<EmbeddingService>();
 builder.Services.AddScoped<SemanticSearchService>();
 builder.Services.AddScoped<TopicClusterService>();
 builder.Services.AddScoped<TopicClusterCacheService>();
-builder.Services.AddScoped<DailyDigestService>();
+builder.Services.AddScoped<DigestService>();
 builder.Services.AddScoped<RollupCacheService>();
 
 builder.Services.AddSingleton<AiJobQueue>();
